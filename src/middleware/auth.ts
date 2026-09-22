@@ -26,12 +26,15 @@ export const requireAuth = async (
   try {
     let decodedToken: DecodedIdToken;
 
-    // Check if demo token or real Firebase token
-    if (token.startsWith('demo-token-')) {
-      // Allow demo user verification for dev seed
-      const email = token.replace('demo-token-', '');
+    // Check if session token (email/password login or demo role switch)
+    if (token.startsWith('auth-token-') || token.startsWith('demo-token-')) {
+      const email = decodeURIComponent(token.replace(/^auth-token-|^demo-token-/, ''));
       const existingUser = await db.select().from(profiles).where(eq(profiles.email, email)).limit(1);
       if (existingUser.length > 0) {
+        if (existingUser[0].accountStatus === 'SUSPENDED') {
+          return res.status(403).json({ error: 'Akun Anda telah dinonaktifkan oleh administrator.' });
+        }
+
         req.profile = existingUser[0];
         req.user = {
           uid: existingUser[0].firebaseUid,

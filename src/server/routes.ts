@@ -21,12 +21,428 @@ import { eq, and, desc, sql, gte, lte, isNull, inArray } from 'drizzle-orm';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.ts';
 import { logAudit } from './audit.ts';
 import crypto from 'crypto';
+import { hashPassword, verifyPassword, generateSecureToken } from './auth-utils.ts';
 
 export const apiRouter = Router();
 
 // ==========================================
 // 1. AUTH & PROFILE ROUTES
 // ==========================================
+
+// Email and Password Login
+apiRouter.post('/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email dan password wajib diisi' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const userList = await db.select().from(profiles).where(eq(profiles.email, trimmedEmail)).limit(1);
+
+    if (userList.length === 0) {
+      return res.status(401).json({ error: 'Kombinasi email atau password salah' });
+    }
+
+    const user = userList[0];
+
+    // Check account status
+    if (user.accountStatus === 'INVITED') {
+      return res.status(403).json({
+        error: 'Akun mentor Anda belum diaktivasi. Silakan buka tautan undangan untuk membuat password pertama kali.',
+        isInvited: true,
+        inviteToken: user.inviteToken,
+      });
+    }
+
+    if (user.accountStatus === 'SUSPENDED') {
+      return res.status(403).json({ error: 'Akun Anda telah dinonaktifkan oleh administrator.' });
+    }
+
+    const isMatch = verifyPassword(String(password), user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Kombinasi email atau password salah' });
+    }
+
+    let umkm = null;
+    let mentor = null;
+    if (user.role === 'UMKM') {
+      const u = await db.select().from(umkmProfiles).where(eq(umkmProfiles.profileId, user.id)).limit(1);
+      if (u.length > 0) umkm = u[0];
+    } else if (user.role === 'MENTOR') {
+      const m = await db.select().from(mentorProfiles).where(eq(mentorProfiles.profileId, user.id)).limit(1);
+      if (m.length > 0) mentor = m[0];
+    }
+
+    await logAudit(user.id, 'LOGIN', 'profiles', user.id, { role: user.role, email: user.email });
+
+    res.json({
+      token: `auth-token-${encodeURIComponent(user.email)}`,
+      profile: user,
+      umkm,
+      mentor,
+    });
+  } catch (error: any) {
+    console.error('Error in login:', error);
+    res.status(500).json({ error: 'Terjadi kesalahan sistem saat login' });
+  }
+});
+
+// UMKM Self-Registration (Only for UMKM)
+apiRouter.post('/auth/register-umkm', async (req, res) => {
+  try {
+    const { fullName, businessName, email, whatsapp, password } = req.body;
+    if (!fullName || !businessName || !email || !password) {
+      return res.status(400).json({ error: 'Nama lengkap, nama usaha, email, dan password wajib diisi' });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password minimal terdiri dari 8 karakter' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const existing = await db.select().from(profiles).where(eq(profiles.email, trimmedEmail)).limit(1);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email ini sudah terdaftar. Silakan login atau gunakan fitur lupa password.' });
+    }
+
+    const pHash = hashPassword(String(password));
+    const newUid = 'uid-umkm-' + Date.now();
+
+    const insertedProfile = await db
+      .insert(profiles)
+      .values({
+        firebaseUid: newUid,
+        email: trimmedEmail,
+        fullName: String(fullName).trim(),
+        role: 'UMKM',
+        accountStatus: 'ACTIVE',
+        passwordHash: pHash,
+      })
+      .returning();
+
+    const newProfile = insertedProfile[0];
+
+    const insertedUmkm = await db
+      .insert(umkmProfiles)
+      .values({
+        profileId: newProfile.id,
+        businessName: String(businessName).trim(),
+        ownerName: String(fullName).trim(),
+        whatsapp: whatsapp ? String(whatsapp).trim() : null,
+        email: trimmedEmail,
+        businessSector: 'Kuliner / F&B',
+      })
+      .returning();
+
+    // Starter sample product so UMKM has immediate catalog
+    await db.insert(products).values({
+      umkmId: insertedUmkm[0].id,
+      name: 'Produk Contoh 1',
+      unit: 'pcs',
+      defaultSellingPrice: 25000,
+      defaultHpp: 15000,
+      status: 'ACTIVE',
+    });
+
+    await logAudit(newProfile.id, 'REGISTER_UMKM', 'umkm_profiles', insertedUmkm[0].id);
+
+    res.json({
+      message: 'Pendaftaran UMKM berhasil! Selamat datang di sistem pendampingan bisnis.',
+      token: `auth-token-${encodeURIComponent(newProfile.email)}`,
+      profile: newProfile,
+      umkm: insertedUmkm[0],
+      mentor: null,
+    });
+  } catch (error: any) {
+    console.error('Error registering UMKM:', error);
+    res.status(500).json({ error: 'Gagal melakukan pendaftaran akun UMKM' });
+  }
+});
+
+// Forgot Password Request
+apiRouter.post('/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email wajib diisi' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const userList = await db.select().from(profiles).where(eq(profiles.email, trimmedEmail)).limit(1);
+
+    if (userList.length === 0) {
+      return res.json({
+        message: 'Jika email terdaftar, instruksi dan tautan pembaruan password telah disiapkan.',
+        found: false,
+      });
+    }
+
+    const user = userList[0];
+    const token = generateSecureToken(24);
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+
+    await db
+      .update(profiles)
+      .set({
+        resetToken: token,
+        resetExpiresAt: expiresAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, user.id));
+
+    await logAudit(user.id, 'REQUEST_PASSWORD_RESET', 'profiles', user.id);
+
+    res.json({
+      message: 'Tautan pembaruan password berhasil dibuat dan disiapkan untuk email Anda.',
+      found: true,
+      email: user.email,
+      resetToken: token,
+      resetUrl: `/?reset=${token}`,
+    });
+  } catch (error: any) {
+    console.error('Error in forgot-password:', error);
+    res.status(500).json({ error: 'Gagal memproses permintaan lupa password' });
+  }
+});
+
+// Verify Reset Token
+apiRouter.get('/auth/verify-reset-token', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Token reset tidak ditemukan' });
+    }
+
+    const userList = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.resetToken, String(token)))
+      .limit(1);
+
+    if (userList.length === 0) {
+      return res.status(400).json({ valid: false, error: 'Tautan pembaruan password tidak valid atau sudah digunakan' });
+    }
+
+    const user = userList[0];
+    if (!user.resetExpiresAt || new Date(user.resetExpiresAt) < new Date()) {
+      return res.status(400).json({ valid: false, error: 'Tautan pembaruan password telah kedaluwarsa. Silakan ajukan ulang.' });
+    }
+
+    res.json({
+      valid: true,
+      email: user.email,
+      fullName: user.fullName,
+    });
+  } catch (error: any) {
+    console.error('Error verifying reset token:', error);
+    res.status(500).json({ valid: false, error: 'Gagal memverifikasi token reset' });
+  }
+});
+
+// Reset Password
+apiRouter.post('/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token dan password baru wajib diisi' });
+    }
+
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Password baru minimal terdiri dari 8 karakter' });
+    }
+
+    const userList = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.resetToken, String(token)))
+      .limit(1);
+
+    if (userList.length === 0) {
+      return res.status(400).json({ error: 'Tautan pembaruan password tidak valid atau sudah pernah digunakan' });
+    }
+
+    const user = userList[0];
+    if (!user.resetExpiresAt || new Date(user.resetExpiresAt) < new Date()) {
+      return res.status(400).json({ error: 'Tautan telah kedaluwarsa. Silakan ajukan ulang permintaan lupa password.' });
+    }
+
+    const pHash = hashPassword(String(newPassword));
+
+    await db
+      .update(profiles)
+      .set({
+        passwordHash: pHash,
+        resetToken: null,
+        resetExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, user.id));
+
+    await logAudit(user.id, 'RESET_PASSWORD', 'profiles', user.id);
+
+    res.json({
+      message: 'Password berhasil diperbarui! Silakan masuk dengan password baru Anda.',
+    });
+  } catch (error: any) {
+    console.error('Error in reset-password:', error);
+    res.status(500).json({ error: 'Gagal memperbarui password' });
+  }
+});
+
+// Verify Mentor Invitation Token
+apiRouter.get('/auth/verify-invite', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ valid: false, error: 'Token undangan tidak ditemukan' });
+    }
+
+    const list = await db
+      .select({
+        profile: profiles,
+        mentor: mentorProfiles,
+      })
+      .from(profiles)
+      .leftJoin(mentorProfiles, eq(mentorProfiles.profileId, profiles.id))
+      .where(eq(profiles.inviteToken, String(token)))
+      .limit(1);
+
+    if (list.length === 0) {
+      return res.status(400).json({ valid: false, error: 'Tautan undangan mentor tidak valid atau sudah digunakan' });
+    }
+
+    const record = list[0];
+    if (record.profile.accountStatus === 'ACTIVE') {
+      return res.status(400).json({ valid: false, error: 'Akun mentor ini sudah aktif. Silakan langsung login.' });
+    }
+
+    res.json({
+      valid: true,
+      email: record.profile.email,
+      fullName: record.profile.fullName,
+      institution: record.mentor?.institution || null,
+      position: record.mentor?.position || null,
+    });
+  } catch (error: any) {
+    console.error('Error verifying invite token:', error);
+    res.status(500).json({ valid: false, error: 'Gagal memverifikasi undangan' });
+  }
+});
+
+// Accept Mentor Invitation & Set Initial Password
+apiRouter.post('/auth/accept-invite', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token undangan dan password wajib diisi' });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password minimal terdiri dari 8 karakter' });
+    }
+
+    const userList = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.inviteToken, String(token)))
+      .limit(1);
+
+    if (userList.length === 0) {
+      return res.status(400).json({ error: 'Tautan undangan tidak valid atau sudah digunakan' });
+    }
+
+    const user = userList[0];
+    const pHash = hashPassword(String(password));
+
+    await db
+      .update(profiles)
+      .set({
+        passwordHash: pHash,
+        accountStatus: 'ACTIVE',
+        inviteToken: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, user.id));
+
+    const m = await db.select().from(mentorProfiles).where(eq(mentorProfiles.profileId, user.id)).limit(1);
+
+    await logAudit(user.id, 'ACCEPT_MENTOR_INVITE', 'profiles', user.id);
+
+    res.json({
+      message: 'Aktivasi akun mentor berhasil! Password Anda telah disimpan.',
+      token: `auth-token-${encodeURIComponent(user.email)}`,
+      profile: { ...user, accountStatus: 'ACTIVE' },
+      mentor: m[0] || null,
+      umkm: null,
+    });
+  } catch (error: any) {
+    console.error('Error accepting invite:', error);
+    res.status(500).json({ error: 'Gagal mengaktivasi akun mentor' });
+  }
+});
+
+// Admin Invites a New Mentor
+apiRouter.post('/admin/invite-mentor', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { fullName, email, whatsapp, institution, position, expertise } = req.body;
+    if (!fullName || !email) {
+      return res.status(400).json({ error: 'Nama mentor dan email wajib diisi' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const existing = await db.select().from(profiles).where(eq(profiles.email, trimmedEmail)).limit(1);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email mentor ini sudah terdaftar di sistem' });
+    }
+
+    const inviteToken = generateSecureToken(24);
+    const newUid = 'uid-mentor-' + Date.now();
+
+    const insertedProfile = await db
+      .insert(profiles)
+      .values({
+        firebaseUid: newUid,
+        email: trimmedEmail,
+        fullName: String(fullName).trim(),
+        role: 'MENTOR',
+        accountStatus: 'INVITED',
+        inviteToken,
+      })
+      .returning();
+
+    const newProfile = insertedProfile[0];
+
+    const insertedMentor = await db
+      .insert(mentorProfiles)
+      .values({
+        profileId: newProfile.id,
+        fullName: String(fullName).trim(),
+        email: trimmedEmail,
+        whatsapp: whatsapp ? String(whatsapp).trim() : null,
+        institution: institution ? String(institution).trim() : null,
+        position: position ? String(position).trim() : null,
+        expertise: expertise ? String(expertise).trim() : null,
+      })
+      .returning();
+
+    await logAudit(req.profile!.id, 'INVITE_MENTOR', 'mentor_profiles', insertedMentor[0].id, {
+      invitedEmail: trimmedEmail,
+      invitedName: fullName,
+    });
+
+    res.json({
+      message: 'Undangan mentor berhasil dibuat dan link aktivasi telah disiapkan.',
+      inviteToken,
+      inviteLink: `/?invite=${inviteToken}`,
+      profile: newProfile,
+      mentor: insertedMentor[0],
+    });
+  } catch (error: any) {
+    console.error('Error inviting mentor:', error);
+    res.status(500).json({ error: 'Gagal mengirim undangan mentor' });
+  }
+});
 
 // Get current user profile
 apiRouter.get('/auth/me', requireAuth, async (req: AuthRequest, res: Response) => {

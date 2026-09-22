@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
+import { LandingPage } from './components/LandingPage.tsx';
 
 // UMKM Views
 import { UmkmDashboard } from './views/umkm/UmkmDashboard.tsx';
@@ -27,6 +28,11 @@ import { MentorAssignment } from './types/index.ts';
 const MainLayout: React.FC = () => {
   const { role, user, loading } = useAuth();
 
+  // URL search query check for invitations or password reset links
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const inviteParam = urlParams?.get('invite');
+  const resetParam = urlParams?.get('reset');
+
   // Navigation state defaults based on role
   const getDefaultTab = () => {
     if (role === 'ADMIN') return 'admin-dashboard';
@@ -39,7 +45,7 @@ const MainLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
   // When role changes via demo switcher, reset to default tab
-  React.useEffect(() => {
+  useEffect(() => {
     setActiveTab(getDefaultTab());
     setSelectedAssignment(null);
   }, [role]);
@@ -51,15 +57,20 @@ const MainLayout: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-9 w-9 animate-spin rounded-full border-3 border-slate-900 border-t-transparent" />
-          <p className="text-xs font-semibold text-slate-600">
-            Menyiapkan Sistem Pendampingan & Cloud SQL...
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-indigo-500 border-t-transparent" />
+          <p className="text-xs font-semibold text-slate-300">
+            Memuat Sistem Pendampingan UMKM...
           </p>
         </div>
       </div>
     );
+  }
+
+  // If not logged in, display the initial Landing Page
+  if (!user) {
+    return <LandingPage initialInviteToken={inviteParam} initialResetToken={resetParam} />;
   }
 
   return (

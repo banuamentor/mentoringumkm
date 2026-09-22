@@ -9,7 +9,7 @@ import {
   timestamp,
 } from 'drizzle-orm/pg-core';
 
-// 1. Profiles (Main Identity linked to Firebase Auth UID)
+// 1. Profiles (Main Identity linked to Auth UID / Credentials)
 export const profiles = pgTable('profiles', {
   id: serial('id').primaryKey(),
   firebaseUid: text('firebase_uid').notNull().unique(),
@@ -17,6 +17,10 @@ export const profiles = pgTable('profiles', {
   fullName: text('full_name').notNull(),
   role: text('role').notNull().default('UMKM'), // 'UMKM' | 'MENTOR' | 'ADMIN'
   accountStatus: text('account_status').notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'INVITED' | 'PENDING' | 'SUSPENDED'
+  passwordHash: text('password_hash'),
+  inviteToken: text('invite_token'),
+  resetToken: text('reset_token'),
+  resetExpiresAt: timestamp('reset_expires_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

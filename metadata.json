@@ -2,5 +2,7 @@
   "name": "UMKM Business & Mentoring Management System",
   "description": "Platform monitoring kinerja bisnis dan pendampingan UMKM berbasis data relasional, transaksi, analisis performa, dan program mentoring.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

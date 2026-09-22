@@ -1,5 +1,5 @@
 export type UserRole = 'ADMIN' | 'MENTOR' | 'UMKM';
-export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'INVITED' | 'PENDING' | 'SUSPENDED';
 export type ActionPlanStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
 export interface UserProfile {
