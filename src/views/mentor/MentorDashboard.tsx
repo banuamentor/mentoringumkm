@@ -16,9 +16,10 @@ import {
 interface MentorDashboardProps {
   onSelectUmkm: (assignment: MentorAssignment) => void;
   onNavigate: (tab: string) => void;
+  showOnlyUmkms?: boolean;
 }
 
-export const MentorDashboard: React.FC<MentorDashboardProps> = ({ onSelectUmkm, onNavigate }) => {
+export const MentorDashboard: React.FC<MentorDashboardProps> = ({ onSelectUmkm, onNavigate, showOnlyUmkms = false }) => {
   const { fetchWithAuth, mentor } = useAuth();
 
   const [assignments, setAssignments] = useState<MentorAssignment[]>([]);
@@ -80,46 +81,51 @@ export const MentorDashboard: React.FC<MentorDashboardProps> = ({ onSelectUmkm, 
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Dashboard Mentor Bisnis</h1>
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          {showOnlyUmkms ? 'Daftar UMKM Dampingan' : 'Dashboard Mentor Bisnis'}
+        </h1>
         <p className="text-xs text-slate-500">
-          Selamat datang, {mentor?.fullName || 'Budi Santoso, M.B.A.'} • Lembaga:{' '}
-          {mentor?.institution || 'Klinik Bisnis UMKM'}
+          {showOnlyUmkms
+            ? 'Pilih salah satu UMKM untuk mengakses lembar pendampingan, histori penjualan, dan catatan sesi.'
+            : `Selamat datang, ${mentor?.fullName || 'Budi Santoso, M.B.A.'} • Lembaga: ${mentor?.institution || 'Klinik Bisnis UMKM'}`}
         </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="UMKM Dampingan Aktif"
-          value={`${stats.umkmCount} UMKM`}
-          icon={Store}
-          subtext="Peserta program terdaftar"
-          variant="accent"
-        />
+      {/* KPI Cards (hidden if showOnlyUmkms) */}
+      {!showOnlyUmkms && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="UMKM Dampingan Aktif"
+            value={`${stats.umkmCount} UMKM`}
+            icon={Store}
+            subtext="Peserta program terdaftar"
+            variant="accent"
+          />
 
-        <StatCard
-          label="Total Sesi Mentoring"
-          value={`${stats.sessionCount} Sesi`}
-          icon={CalendarCheck}
-          subtext="Riwayat pertemuan tersimpan"
-        />
+          <StatCard
+            label="Total Sesi Mentoring"
+            value={`${stats.sessionCount} Sesi`}
+            icon={CalendarCheck}
+            subtext="Riwayat pertemuan tersimpan"
+          />
 
-        <StatCard
-          label="Action Plan Terbit"
-          value={`${stats.actionPlanCount} Target`}
-          icon={ListTodo}
-          subtext="Target perbaikan operasional"
-          variant="success"
-        />
+          <StatCard
+            label="Action Plan Terbit"
+            value={`${stats.actionPlanCount} Target`}
+            icon={ListTodo}
+            subtext="Target perbaikan operasional"
+            variant="success"
+          />
 
-        <StatCard
-          label="Action Plan Overdue"
-          value={`${stats.overdueCount} Terlewat`}
-          icon={AlertTriangle}
-          subtext="Melebihi batas deadline"
-          variant={stats.overdueCount > 0 ? 'warning' : 'default'}
-        />
-      </div>
+          <StatCard
+            label="Action Plan Overdue"
+            value={`${stats.overdueCount} Terlewat`}
+            icon={AlertTriangle}
+            subtext="Melebihi batas deadline"
+            variant={stats.overdueCount > 0 ? 'warning' : 'default'}
+          />
+        </div>
+      )}
 
       {/* Assigned UMKM Cards */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">

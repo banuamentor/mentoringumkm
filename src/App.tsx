@@ -15,12 +15,15 @@ import { UmkmProfile } from './views/umkm/UmkmProfile.tsx';
 
 // Mentor Views
 import { MentorDashboard } from './views/mentor/MentorDashboard.tsx';
+import { MentorSessions } from './views/mentor/MentorSessions.tsx';
+import { MentorActionPlans } from './views/mentor/MentorActionPlans.tsx';
 import { MentorUmkmDetail } from './views/mentor/MentorUmkmDetail.tsx';
 import { MentorProfile } from './views/mentor/MentorProfile.tsx';
 
 // Admin Views
 import { AdminDashboard } from './views/admin/AdminDashboard.tsx';
 import { AdminPrograms } from './views/admin/AdminPrograms.tsx';
+import { AdminMentors } from './views/admin/AdminMentors.tsx';
 import { AdminAuditLogs } from './views/admin/AdminAuditLogs.tsx';
 
 import { MentorAssignment } from './types/index.ts';
@@ -44,11 +47,20 @@ const MainLayout: React.FC = () => {
   const [selectedAssignment, setSelectedAssignment] = useState<MentorAssignment | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
-  // When role changes via demo switcher, reset to default tab
+  // Strict role enforcement: ensure activeTab matches current role
   useEffect(() => {
-    setActiveTab(getDefaultTab());
-    setSelectedAssignment(null);
-  }, [role]);
+    const isTabValid = (tab: string, currentRole: string) => {
+      if (currentRole === 'ADMIN') return tab.startsWith('admin-');
+      if (currentRole === 'MENTOR') return tab.startsWith('mentor-');
+      if (currentRole === 'UMKM') return tab.startsWith('umkm-');
+      return false;
+    };
+
+    if (!isTabValid(activeTab, role)) {
+      setActiveTab(getDefaultTab());
+      setSelectedAssignment(null);
+    }
+  }, [role, activeTab]);
 
   const handleSelectUmkmForMentoring = (assignment: MentorAssignment) => {
     setSelectedAssignment(assignment);
@@ -98,19 +110,19 @@ const MainLayout: React.FC = () => {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">
-            {/* UMKM Route Handling */}
+            {/* UMKM Route Handling - Only accessible by UMKM */}
             {role === 'UMKM' && (
               <>
                 {activeTab === 'umkm-dashboard' && (
                   <UmkmDashboard onNavigate={(t) => setActiveTab(t)} />
                 )}
-                {activeTab === 'umkm-sales' && (
+                {(activeTab === 'umkm-sales' || activeTab === 'umkm-sales-list') && (
                   <UmkmSalesList onAddNew={() => setActiveTab('umkm-sales-new')} />
                 )}
                 {activeTab === 'umkm-sales-new' && (
                   <UmkmSalesForm
-                    onSuccess={() => setActiveTab('umkm-sales')}
-                    onCancel={() => setActiveTab('umkm-sales')}
+                    onSuccess={() => setActiveTab('umkm-sales-list')}
+                    onCancel={() => setActiveTab('umkm-sales-list')}
                   />
                 )}
                 {activeTab === 'umkm-products' && <UmkmProducts />}
@@ -120,7 +132,7 @@ const MainLayout: React.FC = () => {
               </>
             )}
 
-            {/* Mentor Route Handling */}
+            {/* Mentor Route Handling - Only accessible by Mentor */}
             {role === 'MENTOR' && (
               <>
                 {activeTab === 'mentor-dashboard' && (
@@ -128,6 +140,19 @@ const MainLayout: React.FC = () => {
                     onSelectUmkm={handleSelectUmkmForMentoring}
                     onNavigate={(t) => setActiveTab(t)}
                   />
+                )}
+                {activeTab === 'mentor-umkms' && (
+                  <MentorDashboard
+                    onSelectUmkm={handleSelectUmkmForMentoring}
+                    onNavigate={(t) => setActiveTab(t)}
+                    showOnlyUmkms={true}
+                  />
+                )}
+                {activeTab === 'mentor-sessions' && (
+                  <MentorSessions onSelectUmkm={handleSelectUmkmForMentoring} />
+                )}
+                {activeTab === 'mentor-action-plans' && (
+                  <MentorActionPlans onSelectUmkm={handleSelectUmkmForMentoring} />
                 )}
                 {activeTab === 'mentor-umkm-detail' && selectedAssignment && (
                   <MentorUmkmDetail
@@ -142,13 +167,14 @@ const MainLayout: React.FC = () => {
               </>
             )}
 
-            {/* Admin Route Handling */}
+            {/* Admin Route Handling - Only accessible by Admin */}
             {role === 'ADMIN' && (
               <>
                 {activeTab === 'admin-dashboard' && (
                   <AdminDashboard onNavigate={(t) => setActiveTab(t)} />
                 )}
                 {activeTab === 'admin-programs' && <AdminPrograms />}
+                {activeTab === 'admin-mentors' && <AdminMentors />}
                 {activeTab === 'admin-audit' && <AdminAuditLogs />}
               </>
             )}

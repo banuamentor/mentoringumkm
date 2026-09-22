@@ -51,11 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, isOpe
       // ADMIN
       return [
         { id: 'admin-dashboard', label: 'Dashboard Eksekutif', icon: LayoutDashboard },
-        { id: 'admin-umkms', label: 'Monitoring UMKM', icon: Store },
-        { id: 'admin-mentors', label: 'Monitoring Mentor', icon: Users },
-        { id: 'admin-programs', label: 'Program Akselerasi', icon: Award },
-        { id: 'admin-assignments', label: 'Penugasan Mentor', icon: Layers },
-        { id: 'admin-users', label: 'Manajemen Akun', icon: UserCog },
+        { id: 'admin-programs', label: 'Program & Penugasan Mentor', icon: Award },
+        { id: 'admin-mentors', label: 'Manajemen & Undangan Mentor', icon: Users },
         { id: 'admin-audit', label: 'Audit Log Sistem', icon: ShieldCheck },
       ];
     }
