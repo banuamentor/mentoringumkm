@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { UmkmAnalyticsData } from '../../types/index.ts';
+import { UmkmAnalyticsData, Sale } from '../../types/index.ts';
 import { StatCard } from '../../components/StatCard.tsx';
 import { formatCurrency, formatNumber, formatPercent } from '../../utils/formatters.ts';
+import { exportTransactionsReportPDF } from '../../utils/pdfExport.ts';
 import {
   TrendingUp,
   DollarSign,
@@ -15,6 +16,9 @@ import {
   Layers,
   ArrowUpRight,
   Store,
+  Printer,
+  Download,
+  Receipt,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -32,10 +36,11 @@ interface UmkmDashboardProps {
 }
 
 export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
-  const { fetchWithAuth, umkm } = useAuth();
+  const { fetchWithAuth, umkm, user } = useAuth();
   const [data, setData] = useState<UmkmAnalyticsData | null>(null);
   const [period, setPeriod] = useState<string>('this_month');
   const [loading, setLoading] = useState<boolean>(true);
+  const [exportingReport, setExportingReport] = useState<boolean>(false);
 
   const loadData = async (selectedPeriod: string) => {
     setLoading(true);
@@ -56,6 +61,70 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
     loadData(period);
   }, [period]);
 
+  const handleExportPeriodTransactions = async () => {
+    setExportingReport(true);
+    try {
+      const now = new Date();
+      let sDate = '';
+      let eDate = now.toISOString().split('T')[0];
+      if (period === 'today') {
+        sDate = eDate;
+      } else if (period === '7days') {
+        const p = new Date();
+        p.setDate(now.getDate() - 6);
+        sDate = p.toISOString().split('T')[0];
+      } else if (period === 'this_month') {
+        sDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      } else if (period === 'last_month') {
+        sDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+        eDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+      } else if (period === 'this_year') {
+        sDate = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+      }
+
+      const params = new URLSearchParams();
+      if (sDate) params.append('startDate', sDate);
+      if (eDate) params.append('endDate', eDate);
+
+      const res = await fetchWithAuth(`/api/sales?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error('Gagal memuat transaksi untuk laporan');
+      }
+      const salesList: Sale[] = await res.json();
+
+      if (!salesList || salesList.length === 0) {
+        alert('Tidak ada transaksi pada periode ini untuk dicetak.');
+        return;
+      }
+
+      const periodLabelMap: Record<string, string> = {
+        today: 'Hari Ini',
+        '7days': '7 Hari Terakhir',
+        this_month: 'Bulan Ini',
+        last_month: 'Bulan Lalu',
+        this_year: 'Tahun Ini',
+      };
+
+      exportTransactionsReportPDF({
+        scope: 'SINGLE',
+        targetName: umkm?.businessName || 'Usaha UMKM',
+        ownerName: umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
+        businessSector: umkm?.businessSector || undefined,
+        cityRegency: umkm?.cityRegency || undefined,
+        periodLabel: periodLabelMap[period] || period,
+        generatedBy: user?.fullName || umkm?.ownerName || 'Pemilik Usaha UMKM',
+        signerName: umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
+        signerTitle: 'Pemilik Usaha / Pimpinan UMKM',
+        sales: salesList,
+      });
+    } catch (err: any) {
+      console.error('Error generating transaction report from dashboard:', err);
+      alert('Gagal membuat laporan: ' + err.message);
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Title and Period Filter */}
@@ -69,27 +138,39 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
           </p>
         </div>
 
-        {/* Period Selector Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 text-xs">
-          {[
-            { id: 'today', label: 'Hari Ini' },
-            { id: '7days', label: '7 Hari' },
-            { id: 'this_month', label: 'Bulan Ini' },
-            { id: 'last_month', label: 'Bulan Lalu' },
-            { id: 'this_year', label: 'Tahun Ini' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setPeriod(item.id)}
-              className={`whitespace-nowrap rounded-md px-3 py-1.5 font-medium transition-colors ${
-                period === item.id
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+        {/* Period Selector Tabs & Export Report Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 text-xs">
+            {[
+              { id: 'today', label: 'Hari Ini' },
+              { id: '7days', label: '7 Hari' },
+              { id: 'this_month', label: 'Bulan Ini' },
+              { id: 'last_month', label: 'Bulan Lalu' },
+              { id: 'this_year', label: 'Tahun Ini' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setPeriod(item.id)}
+                className={`whitespace-nowrap rounded-md px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+                  period === item.id
+                    ? 'bg-slate-900 text-white font-semibold'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={handleExportPeriodTransactions}
+            disabled={exportingReport}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            title="Unduh laporan transaksi PDF untuk periode ini"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-700" />
+            <span>{exportingReport ? 'Mengunduh...' : 'Unduh Laporan Periode Ini'}</span>
+          </button>
         </div>
       </div>
 
@@ -155,7 +236,7 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => onNavigate('umkm-sales-new')}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
@@ -164,11 +245,19 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
             <span>Mulai Catat Transaksi</span>
           </button>
           <button
+            onClick={() => onNavigate('umkm-sales-list')}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+            title="Buka daftar transaksi dan cetak nota / laporan berkala"
+          >
+            <Receipt className="h-4 w-4 text-emerald-600" />
+            <span>Riwayat & Nota</span>
+          </button>
+          <button
             onClick={() => onNavigate('umkm-analytics')}
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
           >
             <FileText className="h-4 w-4 text-slate-500" />
-            <span className="hidden sm:inline">Laporan</span>
+            <span className="hidden sm:inline">Analisis</span>
           </button>
         </div>
       </div>

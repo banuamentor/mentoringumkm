@@ -32,8 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, isOpe
     if (role === 'UMKM') {
       return [
         { id: 'umkm-dashboard', label: 'Dashboard Bisnis', icon: LayoutDashboard },
-        { id: 'umkm-sales-new', label: 'Catat Penjualan', icon: PlusCircle, badge: 'Baru' },
-        { id: 'umkm-sales-list', label: 'Riwayat Transaksi', icon: Receipt },
+        { id: 'umkm-sales-new', label: 'Catat Penjualan', icon: PlusCircle, badge: 'Cepat' },
+        { id: 'umkm-sales-list', label: 'Riwayat & Laporan Transaksi', icon: Receipt, badge: 'PDF' },
         { id: 'umkm-products', label: 'Katalog Produk & HPP', icon: Package },
         { id: 'umkm-analytics', label: 'Analisis & Laporan', icon: BarChart3 },
         { id: 'umkm-mentoring', label: 'Sesi & Action Plan', icon: ListTodo },
