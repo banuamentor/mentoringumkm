@@ -94,7 +94,6 @@ const MainLayout: React.FC = () => {
       <Navbar
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         isSidebarOpen={sidebarOpen}
-        onQuickSale={role === 'UMKM' ? () => setActiveTab('umkm-sales-new') : undefined}
       />
 
       <div className="flex flex-1 overflow-hidden relative">

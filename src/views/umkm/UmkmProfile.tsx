@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Save, Store, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChangePasswordCard } from '../../components/ChangePasswordCard.tsx';
 
 export const UmkmProfile: React.FC = () => {
   const { umkm, fetchWithAuth, refreshProfile } = useAuth();
@@ -293,6 +294,9 @@ export const UmkmProfile: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Keamanan & Ubah Password Mandiri */}
+      <ChangePasswordCard />
     </div>
   );
 };

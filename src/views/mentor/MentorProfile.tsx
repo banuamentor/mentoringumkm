@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Save, CheckCircle, AlertCircle, UserCheck } from 'lucide-react';
+import { ChangePasswordCard } from '../../components/ChangePasswordCard.tsx';
 
 export const MentorProfile: React.FC = () => {
   const { mentor, fetchWithAuth, refreshProfile } = useAuth();
@@ -164,6 +165,9 @@ export const MentorProfile: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Keamanan & Ubah Password Mandiri */}
+      <ChangePasswordCard />
     </div>
   );
 };

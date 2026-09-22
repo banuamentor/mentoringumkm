@@ -290,6 +290,46 @@ apiRouter.post('/auth/reset-password', async (req, res) => {
   }
 });
 
+// User in-app change password
+apiRouter.post('/auth/change-password', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const profile = req.profile!;
+
+    if (!newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Password baru minimal terdiri dari 8 karakter' });
+    }
+
+    // If profile has passwordHash, check currentPassword
+    if (profile.passwordHash) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Password lama wajib diisi untuk konfirmasi keamanan' });
+      }
+      const isMatch = verifyPassword(String(currentPassword), profile.passwordHash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Password lama yang Anda masukkan salah' });
+      }
+    }
+
+    const pHash = hashPassword(String(newPassword));
+
+    await db
+      .update(profiles)
+      .set({
+        passwordHash: pHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, profile.id));
+
+    await logAudit(profile.id, 'CHANGE_PASSWORD', 'profiles', profile.id);
+
+    res.json({ message: 'Password Anda berhasil diperbarui!' });
+  } catch (error: any) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Gagal memperbarui password' });
+  }
+});
+
 // Verify Mentor Invitation Token
 apiRouter.get('/auth/verify-invite', async (req, res) => {
   try {
@@ -3053,6 +3093,230 @@ apiRouter.post('/admin/users/:id/status', requireAuth, requireRole(['ADMIN']), a
   } catch (error: any) {
     console.error('Error changing user status:', error);
     res.status(500).json({ error: 'Gagal mengubah status akun' });
+  }
+});
+
+// Admin Creates User Directly (UMKM or MENTOR with Email & Password)
+apiRouter.post('/admin/create-account', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      role,
+      email,
+      password,
+      fullName,
+      whatsapp,
+      // UMKM fields
+      businessName,
+      businessSector,
+      cityRegency,
+      address,
+      // Mentor fields
+      institution,
+      position,
+      expertise,
+    } = req.body;
+
+    if (!role || !['UMKM', 'MENTOR'].includes(role)) {
+      return res.status(400).json({ error: 'Tipe akun harus UMKM atau MENTOR' });
+    }
+
+    if (!email || !String(email).includes('@')) {
+      return res.status(400).json({ error: 'Format email tidak valid' });
+    }
+
+    if (!password || String(password).length < 8) {
+      return res.status(400).json({ error: 'Password minimal terdiri dari 8 karakter' });
+    }
+
+    if (!fullName || !String(fullName).trim()) {
+      return res.status(400).json({ error: 'Nama lengkap pengguna wajib diisi' });
+    }
+
+    if (role === 'UMKM' && (!businessName || !String(businessName).trim())) {
+      return res.status(400).json({ error: 'Nama usaha wajib diisi untuk akun UMKM' });
+    }
+
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const existing = await db.select().from(profiles).where(eq(profiles.email, trimmedEmail)).limit(1);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email ini sudah terdaftar di sistem. Silakan gunakan email lain atau reset password akun yang sudah ada.' });
+    }
+
+    const pHash = hashPassword(String(password));
+    const newUid = `uid-${role.toLowerCase()}-${Date.now()}`;
+
+    const insertedProfile = await db
+      .insert(profiles)
+      .values({
+        firebaseUid: newUid,
+        email: trimmedEmail,
+        fullName: String(fullName).trim(),
+        role,
+        accountStatus: 'ACTIVE',
+        passwordHash: pHash,
+      })
+      .returning();
+
+    const newProfile = insertedProfile[0];
+
+    let createdUmkm = null;
+    let createdMentor = null;
+
+    if (role === 'UMKM') {
+      const insertedUmkm = await db
+        .insert(umkmProfiles)
+        .values({
+          profileId: newProfile.id,
+          businessName: String(businessName).trim(),
+          ownerName: String(fullName).trim(),
+          whatsapp: whatsapp ? String(whatsapp).trim() : null,
+          email: trimmedEmail,
+          businessSector: businessSector ? String(businessSector).trim() : 'Kuliner / F&B',
+          cityRegency: cityRegency ? String(cityRegency).trim() : 'Kota Bandung',
+          address: address ? String(address).trim() : null,
+        })
+        .returning();
+
+      createdUmkm = insertedUmkm[0];
+
+      // Insert default starter sample product
+      await db.insert(products).values({
+        umkmId: createdUmkm.id,
+        name: 'Produk Contoh Perdana',
+        unit: 'pcs',
+        defaultSellingPrice: 25000,
+        defaultHpp: 15000,
+        status: 'ACTIVE',
+      });
+    } else {
+      // MENTOR
+      const insertedMentor = await db
+        .insert(mentorProfiles)
+        .values({
+          profileId: newProfile.id,
+          fullName: String(fullName).trim(),
+          email: trimmedEmail,
+          whatsapp: whatsapp ? String(whatsapp).trim() : null,
+          institution: institution ? String(institution).trim() : 'Klinik Bisnis UMKM',
+          position: position ? String(position).trim() : 'Mentor Bisnis',
+          expertise: expertise ? String(expertise).trim() : 'Manajemen Keuangan & HPP',
+        })
+        .returning();
+
+      createdMentor = insertedMentor[0];
+    }
+
+    await logAudit(req.profile!.id, 'ADMIN_CREATE_USER', 'profiles', newProfile.id, {
+      role,
+      email: trimmedEmail,
+      fullName,
+    });
+
+    res.json({
+      message: `Akun ${role === 'UMKM' ? 'UMKM' : 'Mentor'} berhasil didaftarkan dan langsung aktif!`,
+      profile: newProfile,
+      umkm: createdUmkm,
+      mentor: createdMentor,
+      credentials: {
+        email: trimmedEmail,
+        password: String(password),
+        role,
+        fullName: String(fullName).trim(),
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in admin create-account:', error);
+    res.status(500).json({ error: 'Gagal membuat akun baru' });
+  }
+});
+
+// Admin Reset Password for User
+apiRouter.post('/admin/users/:id/reset-password', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res: Response) => {
+  try {
+    const targetProfileId = Number(req.params.id);
+    const { newPassword } = req.body;
+
+    const userList = await db.select().from(profiles).where(eq(profiles.id, targetProfileId)).limit(1);
+    if (userList.length === 0) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+    }
+
+    const targetUser = userList[0];
+    let passwordToSet = newPassword ? String(newPassword).trim() : '';
+    if (!passwordToSet) {
+      // Generate secure random password
+      passwordToSet = 'Bm#' + crypto.randomBytes(4).toString('hex') + '!';
+    }
+
+    if (passwordToSet.length < 8) {
+      return res.status(400).json({ error: 'Password minimal terdiri dari 8 karakter' });
+    }
+
+    const pHash = hashPassword(passwordToSet);
+
+    await db
+      .update(profiles)
+      .set({
+        passwordHash: pHash,
+        resetToken: null,
+        resetExpiresAt: null,
+        accountStatus: 'ACTIVE',
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, targetProfileId));
+
+    await logAudit(req.profile!.id, 'ADMIN_RESET_PASSWORD', 'profiles', targetProfileId, {
+      targetEmail: targetUser.email,
+    });
+
+    res.json({
+      message: `Password untuk akun ${targetUser.email} berhasil direset!`,
+      email: targetUser.email,
+      newPassword: passwordToSet,
+    });
+  } catch (error: any) {
+    console.error('Error admin resetting password:', error);
+    res.status(500).json({ error: 'Gagal mereset password pengguna' });
+  }
+});
+
+// Admin Get Unified Users List
+apiRouter.get('/admin/all-users', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res: Response) => {
+  try {
+    const allProfiles = await db.select().from(profiles).orderBy(desc(profiles.createdAt));
+    const allUmkms = await db.select().from(umkmProfiles);
+    const allMentors = await db.select().from(mentorProfiles);
+
+    const umkmMap = new Map(allUmkms.map((u) => [u.profileId, u]));
+    const mentorMap = new Map(allMentors.map((m) => [m.profileId, m]));
+
+    const enriched = allProfiles.map((p) => {
+      const u = umkmMap.get(p.id);
+      const m = mentorMap.get(p.id);
+      return {
+        id: p.id,
+        email: p.email,
+        fullName: p.fullName,
+        role: p.role,
+        accountStatus: p.accountStatus,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        businessName: u?.businessName || null,
+        businessSector: u?.businessSector || null,
+        cityRegency: u?.cityRegency || null,
+        whatsapp: u?.whatsapp || m?.whatsapp || null,
+        institution: m?.institution || null,
+        position: m?.position || null,
+        expertise: m?.expertise || null,
+        umkmId: u?.id || null,
+        mentorId: m?.id || null,
+      };
+    });
+
+    res.json(enriched);
+  } catch (error: any) {
+    console.error('Error fetching all users:', error);
+    res.status(500).json({ error: 'Gagal mengambil data seluruh pengguna' });
   }
 });
 
