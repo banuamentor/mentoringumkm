@@ -94,6 +94,15 @@ export const sales = pgTable('sales', {
   salesChannelId: integer('sales_channel_id').references(() => salesChannels.id).notNull(),
   customerName: text('customer_name'),
   notes: text('notes'),
+  subtotal: doublePrecision('subtotal').notNull().default(0),
+  discountType: text('discount_type').notNull().default('NOMINAL'), // 'NOMINAL' | 'PERCENTAGE'
+  discountValue: doublePrecision('discount_value').notNull().default(0),
+  discountAmount: doublePrecision('discount_amount').notNull().default(0),
+  shippingFee: doublePrecision('shipping_fee').notNull().default(0),
+  taxType: text('tax_type').notNull().default('PERCENTAGE'), // 'PERCENTAGE' | 'NOMINAL'
+  taxValue: doublePrecision('tax_value').notNull().default(0),
+  taxAmount: doublePrecision('tax_amount').notNull().default(0),
+  otherFee: doublePrecision('other_fee').notNull().default(0),
   totalRevenue: doublePrecision('total_revenue').notNull().default(0),
   totalHpp: doublePrecision('total_hpp').notNull().default(0),
   grossProfit: doublePrecision('gross_profit').notNull().default(0),

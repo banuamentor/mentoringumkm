@@ -910,14 +910,52 @@ export const AdminTransactions: React.FC = () => {
                   </tbody>
                   <tfoot className="bg-slate-50 font-bold text-xs border-t border-slate-200">
                     <tr>
-                      <td colSpan={4} className="py-2.5 px-3 text-slate-800">Total Akumulasi Transaksi</td>
-                      <td className="py-2.5 px-3 text-right text-slate-900">{formatCurrency(selectedSale.totalRevenue)}</td>
+                      <td colSpan={4} className="py-2.5 px-3 text-slate-800">Subtotal Produk</td>
+                      <td className="py-2.5 px-3 text-right text-slate-900">{formatCurrency(selectedSale.subtotal || selectedSale.totalRevenue)}</td>
                       <td className="py-2.5 px-3 text-right text-emerald-700">{formatCurrency(selectedSale.grossProfit)}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             </div>
+
+            {/* Fees & Discounts breakdown */}
+            {(selectedSale.discountAmount || selectedSale.shippingFee || selectedSale.taxAmount || selectedSale.otherFee) ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal Produk:</span>
+                  <span className="font-semibold">{formatCurrency(selectedSale.subtotal || selectedSale.totalRevenue)}</span>
+                </div>
+                {selectedSale.discountAmount ? (
+                  <div className="flex justify-between text-rose-600">
+                    <span>Diskon / Potongan Harga (-):</span>
+                    <span className="font-semibold">-{formatCurrency(selectedSale.discountAmount)}</span>
+                  </div>
+                ) : null}
+                {selectedSale.shippingFee ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Ongkos Kirim (+):</span>
+                    <span className="font-semibold">+{formatCurrency(selectedSale.shippingFee)}</span>
+                  </div>
+                ) : null}
+                {selectedSale.taxAmount ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Pajak ({selectedSale.taxType === 'PERCENTAGE' ? `${selectedSale.taxValue}%` : 'Nominal'}):</span>
+                    <span className="font-semibold">+{formatCurrency(selectedSale.taxAmount)}</span>
+                  </div>
+                ) : null}
+                {selectedSale.otherFee ? (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Biaya Lain-lain (+):</span>
+                    <span className="font-semibold">+{formatCurrency(selectedSale.otherFee)}</span>
+                  </div>
+                ) : null}
+                <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-slate-900">
+                  <span>Total Tagihan Akhir:</span>
+                  <span className="text-emerald-700">{formatCurrency(selectedSale.totalRevenue)}</span>
+                </div>
+              </div>
+            ) : null}
 
             {/* Financial Summary Box */}
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 flex items-center justify-between text-xs">

@@ -830,6 +830,15 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
         salesChannelId: sales.salesChannelId,
         customerName: sales.customerName,
         notes: sales.notes,
+        subtotal: sales.subtotal,
+        discountType: sales.discountType,
+        discountValue: sales.discountValue,
+        discountAmount: sales.discountAmount,
+        shippingFee: sales.shippingFee,
+        taxType: sales.taxType,
+        taxValue: sales.taxValue,
+        taxAmount: sales.taxAmount,
+        otherFee: sales.otherFee,
         totalRevenue: sales.totalRevenue,
         totalHpp: sales.totalHpp,
         grossProfit: sales.grossProfit,
@@ -902,6 +911,15 @@ apiRouter.get('/sales/:id', requireAuth, async (req: AuthRequest, res) => {
         salesChannelId: sales.salesChannelId,
         customerName: sales.customerName,
         notes: sales.notes,
+        subtotal: sales.subtotal,
+        discountType: sales.discountType,
+        discountValue: sales.discountValue,
+        discountAmount: sales.discountAmount,
+        shippingFee: sales.shippingFee,
+        taxType: sales.taxType,
+        taxValue: sales.taxValue,
+        taxAmount: sales.taxAmount,
+        otherFee: sales.otherFee,
         totalRevenue: sales.totalRevenue,
         totalHpp: sales.totalHpp,
         grossProfit: sales.grossProfit,
@@ -970,7 +988,19 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
   try {
     if (!req.umkm) return res.status(400).json({ error: 'Profil usaha UMKM belum aktif' });
 
-    const { transactionDate, salesChannelId, customerName, notes, items } = req.body;
+    const {
+      transactionDate,
+      salesChannelId,
+      customerName,
+      notes,
+      items,
+      discountType = 'NOMINAL',
+      discountValue = 0,
+      shippingFee = 0,
+      taxType = 'PERCENTAGE',
+      taxValue = 0,
+      otherFee = 0,
+    } = req.body;
 
     if (!transactionDate) {
       return res.status(400).json({ error: 'Tanggal transaksi wajib diisi (YYYY-MM-DD)' });
@@ -993,7 +1023,7 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
     dbProducts.forEach((p) => productMap.set(p.id, p));
 
     // Calculate totals on server (Never trust client totals!)
-    let calculatedTotalRevenue = 0;
+    let calculatedSubtotal = 0;
     let calculatedTotalHpp = 0;
     const processedItems: Array<{
       productId: number;
@@ -1030,7 +1060,7 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
       const itemTotalHpp = hppSnapshot * qty;
       const itemGrossProfit = subtotal - itemTotalHpp;
 
-      calculatedTotalRevenue += subtotal;
+      calculatedSubtotal += subtotal;
       calculatedTotalHpp += itemTotalHpp;
 
       processedItems.push({
@@ -1045,7 +1075,36 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
       });
     }
 
-    const calculatedGrossProfit = calculatedTotalRevenue - calculatedTotalHpp;
+    // 1. Discount calculation
+    let calculatedDiscountAmount = 0;
+    const discVal = Math.max(0, Number(discountValue) || 0);
+    if (discountType === 'PERCENTAGE') {
+      const pct = Math.min(100, discVal);
+      calculatedDiscountAmount = Math.round((calculatedSubtotal * pct) / 100);
+    } else {
+      calculatedDiscountAmount = Math.min(calculatedSubtotal, discVal);
+    }
+
+    const netSales = Math.max(0, calculatedSubtotal - calculatedDiscountAmount);
+
+    // 2. Shipping Fee
+    const calculatedShippingFee = Math.max(0, Number(shippingFee) || 0);
+
+    // 3. Tax calculation
+    let calculatedTaxAmount = 0;
+    const tVal = Math.max(0, Number(taxValue) || 0);
+    if (taxType === 'PERCENTAGE') {
+      calculatedTaxAmount = Math.round((netSales * tVal) / 100);
+    } else {
+      calculatedTaxAmount = tVal;
+    }
+
+    // 4. Other Fee
+    const calculatedOtherFee = Math.max(0, Number(otherFee) || 0);
+
+    // 5. Final totals
+    const finalTotalRevenue = netSales + calculatedShippingFee + calculatedTaxAmount + calculatedOtherFee;
+    const finalGrossProfit = netSales - calculatedTotalHpp;
 
     // Insert sale with automatic sequence retry
     let insertedSale;
@@ -1058,9 +1117,18 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
           salesChannelId: Number(salesChannelId),
           customerName: customerName ? String(customerName).trim() : null,
           notes: notes ? String(notes).trim() : null,
-          totalRevenue: calculatedTotalRevenue,
+          subtotal: calculatedSubtotal,
+          discountType: String(discountType),
+          discountValue: Number(discountValue) || 0,
+          discountAmount: calculatedDiscountAmount,
+          shippingFee: calculatedShippingFee,
+          taxType: String(taxType),
+          taxValue: Number(taxValue) || 0,
+          taxAmount: calculatedTaxAmount,
+          otherFee: calculatedOtherFee,
+          totalRevenue: finalTotalRevenue,
           totalHpp: calculatedTotalHpp,
-          grossProfit: calculatedGrossProfit,
+          grossProfit: finalGrossProfit,
         })
         .returning();
     } catch (insertErr: any) {
@@ -1075,9 +1143,18 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
             salesChannelId: Number(salesChannelId),
             customerName: customerName ? String(customerName).trim() : null,
             notes: notes ? String(notes).trim() : null,
-            totalRevenue: calculatedTotalRevenue,
+            subtotal: calculatedSubtotal,
+            discountType: String(discountType),
+            discountValue: Number(discountValue) || 0,
+            discountAmount: calculatedDiscountAmount,
+            shippingFee: calculatedShippingFee,
+            taxType: String(taxType),
+            taxValue: Number(taxValue) || 0,
+            taxAmount: calculatedTaxAmount,
+            otherFee: calculatedOtherFee,
+            totalRevenue: finalTotalRevenue,
             totalHpp: calculatedTotalHpp,
-            grossProfit: calculatedGrossProfit,
+            grossProfit: finalGrossProfit,
           })
           .returning();
       } else {
@@ -1113,8 +1190,8 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
     }
 
     await logAudit(req.profile!.id, 'CREATE_SALE', 'sales', saleId, {
-      totalRevenue: calculatedTotalRevenue,
-      grossProfit: calculatedGrossProfit,
+      totalRevenue: finalTotalRevenue,
+      grossProfit: finalGrossProfit,
     });
 
     res.status(201).json({

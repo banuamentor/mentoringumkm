@@ -91,6 +91,15 @@ export interface Sale {
   channelName?: string;
   customerName: string | null;
   notes: string | null;
+  subtotal?: number;
+  discountType?: 'NOMINAL' | 'PERCENTAGE';
+  discountValue?: number;
+  discountAmount?: number;
+  shippingFee?: number;
+  taxType?: 'NOMINAL' | 'PERCENTAGE';
+  taxValue?: number;
+  taxAmount?: number;
+  otherFee?: number;
   totalRevenue: number;
   totalHpp: number;
   grossProfit: number;

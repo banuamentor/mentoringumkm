@@ -56,6 +56,14 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showOptionalDetails, setShowOptionalDetails] = useState<boolean>(false);
 
+  // Discount, shipping, tax and other fees
+  const [discountType, setDiscountType] = useState<'NOMINAL' | 'PERCENTAGE'>('NOMINAL');
+  const [discountValue, setDiscountValue] = useState<string>('');
+  const [shippingFee, setShippingFee] = useState<string>('');
+  const [taxType, setTaxType] = useState<'NOMINAL' | 'PERCENTAGE'>('PERCENTAGE');
+  const [taxValue, setTaxValue] = useState<string>('');
+  const [otherFee, setOtherFee] = useState<string>('');
+
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -227,10 +235,42 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
     };
   });
 
-  const totalRevenue = calculatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+  const subtotalRevenue = calculatedItems.reduce((acc, i) => acc + i.subtotal, 0);
   const totalHpp = calculatedItems.reduce((acc, i) => acc + i.totalHpp, 0);
-  const totalGrossProfit = totalRevenue - totalHpp;
-  const overallMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
+
+  // Discount calculation
+  let discountAmount = 0;
+  const discValueNum = Math.max(0, Number(discountValue) || 0);
+  if (discountType === 'PERCENTAGE') {
+    const pct = Math.min(100, discValueNum);
+    discountAmount = Math.round((subtotalRevenue * pct) / 100);
+  } else {
+    discountAmount = Math.min(subtotalRevenue, discValueNum);
+  }
+
+  const netSales = Math.max(0, subtotalRevenue - discountAmount);
+
+  // Shipping Fee
+  const shipFee = Math.max(0, Number(shippingFee) || 0);
+
+  // Tax calculation
+  let taxAmount = 0;
+  const taxValueNum = Math.max(0, Number(taxValue) || 0);
+  if (taxType === 'PERCENTAGE') {
+    taxAmount = Math.round((netSales * taxValueNum) / 100);
+  } else {
+    taxAmount = taxValueNum;
+  }
+
+  // Other Fee
+  const othFee = Math.max(0, Number(otherFee) || 0);
+
+  // Grand Total for Customer to Pay
+  const totalRevenue = netSales + shipFee + taxAmount + othFee;
+
+  // Real Business Gross Profit (Revenue from goods minus HPP)
+  const totalGrossProfit = netSales - totalHpp;
+  const overallMargin = subtotalRevenue > 0 ? (totalGrossProfit / subtotalRevenue) * 100 : 0;
   const totalQuantity = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -260,6 +300,12 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
           quantity: i.quantity,
           sellingPrice: i.sellingPrice,
         })),
+        discountType,
+        discountValue: Number(discountValue) || 0,
+        shippingFee: Number(shippingFee) || 0,
+        taxType,
+        taxValue: Number(taxValue) || 0,
+        otherFee: Number(otherFee) || 0,
       };
 
       const res = await fetchWithAuth('/api/sales', {
@@ -987,6 +1033,167 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* 3. DISKON, PAJAK, ONGKOS KIRIM & BIAYA LAIN-LAIN */}
+      {/* ======================================================== */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-4">
+        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
+          <span>Diskon & Biaya Tambahan</span>
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Diskon */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+              Diskon / Potongan Harga
+            </label>
+            <div className="flex gap-1.5">
+              <div className="flex rounded-lg border border-slate-300 bg-slate-50 p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('NOMINAL')}
+                  className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${discountType === 'NOMINAL' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Rp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('PERCENTAGE')}
+                  className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${discountType === 'PERCENTAGE' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                >
+                  %
+                </button>
+              </div>
+              <input
+                type="number"
+                min="0"
+                placeholder={discountType === 'PERCENTAGE' ? "Contoh: 10" : "Contoh: 15000"}
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+            {discountType === 'PERCENTAGE' && discountAmount > 0 && (
+              <p className="text-[10px] text-emerald-600 font-semibold">
+                Setara dengan -{formatCurrency(discountAmount)}
+              </p>
+            )}
+          </div>
+
+          {/* Ongkos Kirim */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+              Ongkos Kirim (Ongkir)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Rp</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="Contoh: 10000"
+                value={shippingFee}
+                onChange={(e) => setShippingFee(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Pajak */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+              Pajak (misal: PPN)
+            </label>
+            <div className="flex gap-1.5">
+              <div className="flex rounded-lg border border-slate-300 bg-slate-50 p-0.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setTaxType('PERCENTAGE')}
+                  className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${taxType === 'PERCENTAGE' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                >
+                  %
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaxType('NOMINAL')}
+                  className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${taxType === 'NOMINAL' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Rp
+                </button>
+              </div>
+              <input
+                type="number"
+                min="0"
+                placeholder={taxType === 'PERCENTAGE' ? "Contoh: 11" : "Contoh: 5000"}
+                value={taxValue}
+                onChange={(e) => setTaxValue(e.target.value)}
+                className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+            {taxType === 'PERCENTAGE' && taxAmount > 0 && (
+              <p className="text-[10px] text-indigo-600 font-semibold">
+                Setara dengan +{formatCurrency(taxAmount)}
+              </p>
+            )}
+          </div>
+
+          {/* Biaya Lain-lain */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+              Biaya Lain-lain (Kemasan, Layanan)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Rp</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="Contoh: 2000"
+                value={otherFee}
+                onChange={(e) => setOtherFee(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Breakdown Summary */}
+        {subtotalRevenue > 0 && (
+          <div className="mt-3 bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-200">
+            <div className="flex justify-between text-slate-600">
+              <span>Subtotal Produk ({totalQuantity} unit):</span>
+              <span className="font-semibold">{formatCurrency(subtotalRevenue)}</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-rose-600">
+                <span>Diskon / Potongan Harga (-):</span>
+                <span className="font-semibold">-{formatCurrency(discountAmount)}</span>
+              </div>
+            )}
+            {shipFee > 0 && (
+              <div className="flex justify-between text-slate-600">
+                <span>Ongkos Kirim (+):</span>
+                <span className="font-semibold">+{formatCurrency(shipFee)}</span>
+              </div>
+            )}
+            {taxAmount > 0 && (
+              <div className="flex justify-between text-slate-600">
+                <span>Pajak (+):</span>
+                <span className="font-semibold">+{formatCurrency(taxAmount)}</span>
+              </div>
+            )}
+            {othFee > 0 && (
+              <div className="flex justify-between text-slate-600">
+                <span>Biaya Lain-lain (+):</span>
+                <span className="font-semibold">+{formatCurrency(othFee)}</span>
+              </div>
+            )}
+            <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-slate-900 text-sm">
+              <span>Total Akhir Tagihan:</span>
+              <span className="text-emerald-700">{formatCurrency(totalRevenue)}</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ======================================================== */}
       {/* STICKY BOTTOM ACTION BAR (THUMB ZONE - 1 HAND REACH) */}

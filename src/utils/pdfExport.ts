@@ -663,17 +663,65 @@ export function exportSingleTransactionPDF(sale: Sale, signerTitle = 'Penanggung
     },
     foot: [
       [
-        'Total',
+        'Subtotal Produk',
         '',
         '',
         '',
-        formatCurrency(sale.totalRevenue),
+        formatCurrency(sale.subtotal || sale.totalRevenue),
         formatCurrency(sale.totalHpp),
         formatCurrency(sale.grossProfit),
-        sale.totalRevenue > 0 ? formatPercent((sale.grossProfit / sale.totalRevenue) * 100) : '0%',
+        (sale.subtotal || sale.totalRevenue) > 0 ? formatPercent((sale.grossProfit / (sale.subtotal || sale.totalRevenue)) * 100) : '0%',
       ],
     ],
     footStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5 },
+  });
+
+  // Fees & Discount breakdown table
+  const subtotalVal = sale.subtotal || sale.totalRevenue;
+  const discountVal = sale.discountAmount || 0;
+  const shippingVal = sale.shippingFee || 0;
+  const taxVal = sale.taxAmount || 0;
+  const otherVal = sale.otherFee || 0;
+  const grandTotalVal = sale.totalRevenue;
+
+  const breakdownRows = [
+    ['Subtotal Produk', formatCurrency(subtotalVal)],
+  ];
+
+  if (discountVal > 0) {
+    breakdownRows.push(['Potongan Harga (Diskon)', `-${formatCurrency(discountVal)}`]);
+  }
+  if (shippingVal > 0) {
+    breakdownRows.push(['Ongkos Kirim (Ongkir)', `+${formatCurrency(shippingVal)}`]);
+  }
+  if (taxVal > 0) {
+    const taxLabel = sale.taxType === 'PERCENTAGE' ? `Pajak (PPN ${sale.taxValue}%)` : 'Pajak / PPN';
+    breakdownRows.push([taxLabel, `+${formatCurrency(taxVal)}`]);
+  }
+  if (otherVal > 0) {
+    breakdownRows.push(['Biaya Tambahan Lainnya', `+${formatCurrency(otherVal)}`]);
+  }
+  breakdownRows.push(['Total Akhir Tagihan', formatCurrency(grandTotalVal)]);
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 4,
+    margin: { left: pageWidth - 100 },
+    body: breakdownRows,
+    theme: 'plain',
+    styles: { fontSize: 8.5, cellPadding: 1.5, halign: 'right' },
+    columnStyles: {
+      0: { fontStyle: 'normal', cellWidth: 50 },
+      1: { fontStyle: 'bold', cellWidth: 35 },
+    },
+    didParseCell: (data) => {
+      if (data.row.index === breakdownRows.length - 1) {
+        data.cell.styles.fontSize = 9.5;
+        data.cell.styles.fontStyle = 'bold';
+        if (data.column.index === 1) {
+          data.cell.styles.textColor = [16, 185, 129]; // Emerald 600
+        }
+      }
+    }
   });
 
   const finalY = (doc as any).lastAutoTable.finalY + 12;
