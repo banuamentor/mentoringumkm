@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Calendar,
   Layers,
+  Zap,
 } from 'lucide-react';
 
 interface UmkmSalesListProps {
@@ -113,10 +114,10 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
 
         <button
           onClick={onAddNew}
-          className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors"
+          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
         >
-          <PlusCircle className="h-4 w-4" />
-          <span>Catat Penjualan</span>
+          <Zap className="h-4 w-4 fill-current" />
+          <span>Catat Penjualan Cepat</span>
         </button>
       </div>
 

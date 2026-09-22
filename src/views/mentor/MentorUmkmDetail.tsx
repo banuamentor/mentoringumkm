@@ -196,104 +196,121 @@ export const MentorUmkmDetail: React.FC<MentorUmkmDetailProps> = ({ assignment, 
   const overallMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Navigation & UMKM Identity Card */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
+        <div className="flex items-start sm:items-center gap-3 min-w-0">
           <button
+            type="button"
             onClick={onBack}
-            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 transition-colors"
+            className="rounded-xl border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50 transition-colors shrink-0 cursor-pointer active:scale-95"
+            title="Kembali ke Dashboard"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-base sm:text-xl font-bold text-slate-900 tracking-tight break-words">
                 {assignment.businessName}
               </h1>
-              <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 shrink-0">
                 {assignment.cityRegency || 'Kota Bandung'}
               </span>
             </div>
-            <p className="text-xs text-slate-500">
-              Owner: {assignment.ownerName} • Program: {assignment.programName}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+              <span>Owner: <strong className="font-semibold text-slate-700">{assignment.ownerName}</strong></span>
+              <span className="hidden sm:inline text-slate-300">•</span>
+              <span className="truncate max-w-[240px] sm:max-w-none">Program: {assignment.programName}</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center shrink-0">
           <button
+            type="button"
             onClick={() => setIsSessionModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition-colors cursor-pointer active:scale-95"
           >
-            <Plus className="h-4 w-4" />
-            <span>Catat Sesi Mentoring</span>
+            <Plus className="h-4 w-4 shrink-0" />
+            <span className="truncate">Catat Sesi</span>
           </button>
           <button
+            type="button"
             onClick={() => setIsPlanModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2.5 text-xs font-bold text-white shadow-2xs hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
           >
-            <Plus className="h-4 w-4" />
-            <span>Action Plan Baru</span>
+            <Plus className="h-4 w-4 shrink-0" />
+            <span className="truncate">Action Plan</span>
           </button>
         </div>
       </div>
 
       {/* Financial Health Quick Ribbon */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs">
+        <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase text-slate-400">Total Omzet UMKM</div>
-          <div className="text-base font-bold text-slate-900">{formatCurrency(totalRevenue)}</div>
+          <div className="text-sm sm:text-base font-bold text-slate-900 truncate" title={formatCurrency(totalRevenue)}>
+            {formatCurrency(totalRevenue)}
+          </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase text-slate-400">Total HPP</div>
-          <div className="text-base font-bold text-slate-600">{formatCurrency(totalHpp)}</div>
+          <div className="text-sm sm:text-base font-bold text-slate-600 truncate" title={formatCurrency(totalHpp)}>
+            {formatCurrency(totalHpp)}
+          </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase text-emerald-600">Laba Kotor</div>
-          <div className="text-base font-bold text-emerald-700">{formatCurrency(totalGrossProfit)}</div>
+          <div className="text-sm sm:text-base font-bold text-emerald-700 truncate" title={formatCurrency(totalGrossProfit)}>
+            {formatCurrency(totalGrossProfit)}
+          </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase text-slate-400">Gross Margin</div>
-          <div className="text-base font-bold text-slate-900">{formatPercent(overallMargin)}</div>
+          <div className="text-sm sm:text-base font-bold text-slate-900 truncate">
+            {formatPercent(overallMargin)}
+          </div>
         </div>
       </div>
 
       {/* Worksheet Tabs */}
-      <div className="flex border-b border-slate-200 space-x-4 text-xs font-semibold">
+      <div className="flex border-b border-slate-200 gap-2 sm:gap-4 text-xs font-semibold overflow-x-auto pb-px">
         <button
+          type="button"
           onClick={() => setActiveTab('sessions')}
-          className={`pb-2.5 transition-colors border-b-2 flex items-center gap-1.5 ${
+          className={`pb-2.5 px-1 transition-colors border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
             activeTab === 'sessions'
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
+              ? 'border-slate-900 text-slate-900 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <CalendarCheck className="h-4 w-4" />
+          <CalendarCheck className="h-4 w-4 shrink-0" />
           <span>Sesi Mentoring ({sessions.length})</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('action_plans')}
-          className={`pb-2.5 transition-colors border-b-2 flex items-center gap-1.5 ${
+          className={`pb-2.5 px-1 transition-colors border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
             activeTab === 'action_plans'
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
+              ? 'border-slate-900 text-slate-900 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <ListTodo className="h-4 w-4" />
-          <span>Action Plans & Evaluasi ({actionPlans.length})</span>
+          <ListTodo className="h-4 w-4 shrink-0" />
+          <span>Action Plans ({actionPlans.length})</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('sales')}
-          className={`pb-2.5 transition-colors border-b-2 flex items-center gap-1.5 ${
+          className={`pb-2.5 px-1 transition-colors border-b-2 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
             activeTab === 'sales'
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
+              ? 'border-slate-900 text-slate-900 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Receipt className="h-4 w-4" />
+          <Receipt className="h-4 w-4 shrink-0" />
           <span>Data Transaksi ({sales.length})</span>
         </button>
       </div>

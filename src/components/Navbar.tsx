@@ -11,14 +11,16 @@ import {
   Sparkles,
   Menu,
   CheckCircle2,
+  Zap,
 } from 'lucide-react';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  onQuickSale?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen, onQuickSale }) => {
   const { user, umkm, mentor, role, signOut, switchDemoRole, signInWithGoogle, loading } = useAuth();
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
@@ -67,7 +69,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
       </div>
 
       {/* User Status & Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Quick Catat Jual Button for UMKM in Top Header */}
+        {role === 'UMKM' && onQuickSale && (
+          <button
+            id="navbar-quick-sale-btn"
+            type="button"
+            onClick={onQuickSale}
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer ring-2 ring-emerald-500/20"
+            title="Catat Penjualan Cepat"
+          >
+            <Zap className="h-3.5 w-3.5 fill-current text-white" />
+            <span className="tracking-tight">Catat Jual</span>
+          </button>
+        )}
+
         {/* Active Role Dedicated Badge */}
         <div className={`hidden sm:flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold ${currentRoleInfo.color}`}>
           <IconComponent className="h-4 w-4" />

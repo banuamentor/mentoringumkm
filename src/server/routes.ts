@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { db } from '../db/index.ts';
+import { db, ensureSequencesSynced } from '../db/index.ts';
 import {
   profiles,
   umkmProfiles,
@@ -977,20 +977,43 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
 
     const calculatedGrossProfit = calculatedTotalRevenue - calculatedTotalHpp;
 
-    // Insert sale
-    const insertedSale = await db
-      .insert(sales)
-      .values({
-        umkmId: req.umkm.id,
-        transactionDate: String(transactionDate),
-        salesChannelId: Number(salesChannelId),
-        customerName: customerName ? String(customerName).trim() : null,
-        notes: notes ? String(notes).trim() : null,
-        totalRevenue: calculatedTotalRevenue,
-        totalHpp: calculatedTotalHpp,
-        grossProfit: calculatedGrossProfit,
-      })
-      .returning();
+    // Insert sale with automatic sequence retry
+    let insertedSale;
+    try {
+      insertedSale = await db
+        .insert(sales)
+        .values({
+          umkmId: req.umkm.id,
+          transactionDate: String(transactionDate),
+          salesChannelId: Number(salesChannelId),
+          customerName: customerName ? String(customerName).trim() : null,
+          notes: notes ? String(notes).trim() : null,
+          totalRevenue: calculatedTotalRevenue,
+          totalHpp: calculatedTotalHpp,
+          grossProfit: calculatedGrossProfit,
+        })
+        .returning();
+    } catch (insertErr: any) {
+      if (insertErr?.message?.includes('duplicate key') || insertErr?.code === '23505') {
+        console.warn('Auto-resolving sequence collision in sales table...');
+        await ensureSequencesSynced();
+        insertedSale = await db
+          .insert(sales)
+          .values({
+            umkmId: req.umkm.id,
+            transactionDate: String(transactionDate),
+            salesChannelId: Number(salesChannelId),
+            customerName: customerName ? String(customerName).trim() : null,
+            notes: notes ? String(notes).trim() : null,
+            totalRevenue: calculatedTotalRevenue,
+            totalHpp: calculatedTotalHpp,
+            grossProfit: calculatedGrossProfit,
+          })
+          .returning();
+      } else {
+        throw insertErr;
+      }
+    }
 
     const saleId = insertedSale[0].id;
 
@@ -1007,7 +1030,17 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
       grossProfit: item.grossProfit,
     }));
 
-    await db.insert(saleItems).values(itemsToInsert);
+    try {
+      await db.insert(saleItems).values(itemsToInsert);
+    } catch (itemsErr: any) {
+      if (itemsErr?.message?.includes('duplicate key') || itemsErr?.code === '23505') {
+        console.warn('Auto-resolving sequence collision in sale_items table...');
+        await ensureSequencesSynced();
+        await db.insert(saleItems).values(itemsToInsert);
+      } else {
+        throw itemsErr;
+      }
+    }
 
     await logAudit(req.profile!.id, 'CREATE_SALE', 'sales', saleId, {
       totalRevenue: calculatedTotalRevenue,

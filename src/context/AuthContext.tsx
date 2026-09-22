@@ -54,20 +54,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const res = await fetch('/api/auth/me', {
+      let res = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${currentToken}`,
         },
+      }).catch(async () => {
+        // Short pause and one retry in case server was starting up
+        await new Promise((r) => setTimeout(r, 600));
+        return fetch('/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
       });
 
-      if (res.ok) {
+      if (res && res.ok) {
         const data = await res.json();
         setUser(data.profile);
         setUmkm(data.umkm);
         setMentor(data.mentor);
-      } else {
+      } else if (res && (res.status === 401 || res.status === 403)) {
         // Token might have expired or user suspended
-        console.warn('Session expired or profile failed');
+        console.warn('Session expired or profile invalid');
         localStorage.removeItem('auth_token');
         setToken(null);
         setUser(null);
@@ -75,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMentor(null);
       }
     } catch (err) {
-      console.error('Failed to fetch /api/auth/me:', err);
+      console.warn('Session check ended with network issue:', err);
     } finally {
       setLoading(false);
     }

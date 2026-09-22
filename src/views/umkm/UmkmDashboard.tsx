@@ -137,33 +137,38 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
       ) : null}
 
       {/* Action Banner / Quick Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50/60 to-orange-50/40 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-600 text-white shadow-sm">
-            <PlusCircle className="h-5 w-5" />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-amber-50/40 p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md ring-4 ring-emerald-500/20">
+            <PlusCircle className="h-6 w-6 stroke-[2.5px]" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Catat Penjualan Hari Ini</h3>
-            <p className="text-xs text-slate-600">
-              Input transaksi baru dengan snapshot HPP otomatis dan kalkulasi margin seketika.
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900">Catat Penjualan Cepat (1-Tangan)</h3>
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                FITUR UTAMA
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Cukup sentuh produk di layar ponsel dengan satu tangan, kalkulasi HPP & laba otomatis.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => onNavigate('umkm-sales-new')}
-            className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-emerald-500 active:scale-95 transition-all cursor-pointer"
           >
             <PlusCircle className="h-4 w-4" />
-            <span>Catat Transaksi</span>
+            <span>Mulai Catat Transaksi</span>
           </button>
           <button
             onClick={() => onNavigate('umkm-analytics')}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
           >
-            <FileText className="h-4 w-4" />
-            <span>Laporan Lengkap</span>
+            <FileText className="h-4 w-4 text-slate-500" />
+            <span className="hidden sm:inline">Laporan</span>
           </button>
         </div>
       </div>

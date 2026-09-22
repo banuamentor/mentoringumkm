@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { LandingPage } from './components/LandingPage.tsx';
+import { UmkmMobileNav } from './components/UmkmMobileNav.tsx';
 
 // UMKM Views
 import { UmkmDashboard } from './views/umkm/UmkmDashboard.tsx';
@@ -86,14 +87,15 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 antialiased flex flex-col font-sans">
+    <div className="h-screen h-[100dvh] bg-slate-50 text-slate-900 antialiased flex flex-col font-sans overflow-hidden">
       {/* Top Navbar */}
       <Navbar
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         isSidebarOpen={sidebarOpen}
+        onQuickSale={role === 'UMKM' ? () => setActiveTab('umkm-sales-new') : undefined}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Role-specific Sidebar */}
         <Sidebar
           currentTab={activeTab}
@@ -108,7 +110,7 @@ const MainLayout: React.FC = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${role === 'UMKM' && activeTab === 'umkm-sales-new' ? 'pb-36' : 'pb-6 sm:pb-8'}`}>
           <div className="mx-auto max-w-7xl">
             {/* UMKM Route Handling - Only accessible by UMKM */}
             {role === 'UMKM' && (
@@ -181,6 +183,17 @@ const MainLayout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* UMKM One-Handed Quick Mobile Bottom Navigation & Desktop FAB */}
+      {role === 'UMKM' && (
+        <UmkmMobileNav
+          currentTab={activeTab}
+          onSelectTab={(tab: string) => {
+            setActiveTab(tab);
+            setSelectedAssignment(null);
+          }}
+        />
+      )}
     </div>
   );
 };
