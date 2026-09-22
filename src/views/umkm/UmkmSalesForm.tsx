@@ -361,6 +361,65 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
         </div>
       </div>
 
+      {/* TOP ACTION & SUMMARY BAR (Accessible without scrolling down) */}
+      <div
+        id="umkm-sales-top-action-bar"
+        className="rounded-2xl border border-emerald-300 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-3.5 sm:p-4 text-white shadow-md flex flex-wrap items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <ShoppingCart className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-300">
+                Total Transaksi ({totalQuantity} unit)
+              </span>
+              {items.length > 0 && (
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                  {items.length} jenis produk
+                </span>
+              )}
+            </div>
+            <div className="text-lg sm:text-2xl font-black text-emerald-400 truncate">
+              {formatCurrency(totalRevenue)}
+            </div>
+            {totalRevenue > 0 && (
+              <div className="text-[11px] text-slate-300 truncate">
+                Est. Laba Kotor: <strong className="text-emerald-300">{formatCurrency(totalGrossProfit)}</strong> ({formatPercent(overallMargin)})
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 sm:flex-initial rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"
+          >
+            Batal
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || items.length === 0 || !salesChannelId}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs sm:text-sm font-black text-slate-950 shadow-md hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all cursor-pointer"
+            title="Simpan penjualan sekarang"
+          >
+            <Save className="h-4 w-4" />
+            <span>
+              {submitting
+                ? 'Menyimpan...'
+                : items.length === 0
+                ? 'Pilih Produk'
+                : 'Simpan Transaksi'}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {errorMsg && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
           <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />

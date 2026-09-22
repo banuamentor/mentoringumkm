@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ShieldAlert,
+  Receipt,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -74,20 +75,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => onNavigate('admin-programs')}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors"
+            onClick={() => onNavigate('admin-mentoring')}
+            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 transition-colors cursor-pointer"
           >
-            <Layers className="h-4 w-4" />
-            <span>Kelola Program & Penugasan</span>
+            <CalendarCheck className="h-4 w-4" />
+            <span>Kegiatan Pendampingan & PDF</span>
           </button>
           <button
-            onClick={() => onNavigate('admin-audit')}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            onClick={() => onNavigate('admin-transactions')}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors cursor-pointer"
           >
-            <ShieldAlert className="h-4 w-4 text-slate-500" />
-            <span>Audit Log Sistem</span>
+            <Receipt className="h-4 w-4" />
+            <span>Transaksi & Laporan PDF</span>
+          </button>
+          <button
+            onClick={() => onNavigate('admin-programs')}
+            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <Layers className="h-4 w-4" />
+            <span>Program & Penugasan</span>
           </button>
         </div>
       </div>
@@ -143,9 +151,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
                 <h2 className="text-sm font-bold text-slate-900">Peringkat Omzet Bisnis UMKM</h2>
                 <p className="text-xs text-slate-500">UMKM dengan kontribusi omzet tertinggi</p>
               </div>
-              <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                Data Transaksi Nyata
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onNavigate('admin-transactions')}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors cursor-pointer"
+                >
+                  <span>Lihat Semua & Cetak PDF</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">

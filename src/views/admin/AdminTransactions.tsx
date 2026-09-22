@@ -1,0 +1,1191 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../../context/AuthContext.tsx';
+import { Sale, SalesChannel, UmkmProfile, Program } from '../../types/index.ts';
+import { formatCurrency, formatDate, formatPercent, formatNumber } from '../../utils/formatters.ts';
+import { exportTransactionsReportPDF, exportSingleTransactionPDF } from '../../utils/pdfExport.ts';
+import { StatCard } from '../../components/StatCard.tsx';
+import {
+  Receipt,
+  Search,
+  Filter,
+  Download,
+  Eye,
+  Calendar,
+  Store,
+  DollarSign,
+  TrendingUp,
+  Package,
+  Layers,
+  RotateCcw,
+  X,
+  FileText,
+  Printer,
+  ChevronDown,
+  CheckCircle2,
+  Building2,
+  Users,
+  Percent,
+} from 'lucide-react';
+
+export const AdminTransactions: React.FC = () => {
+  const { fetchWithAuth, user } = useAuth();
+
+  // Data state
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [umkms, setUmkms] = useState<any[]>([]);
+  const [channels, setChannels] = useState<SalesChannel[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Filter state
+  const [selectedUmkmId, setSelectedUmkmId] = useState<string>('all');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('all');
+  const [periodPreset, setPeriodPreset] = useState<string>('thisMonth');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+
+  // Modals
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
+  const [exportingPdf, setExportingPdf] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // PDF Modal Form State
+  const [pdfScope, setPdfScope] = useState<'ALL' | 'SINGLE'>('ALL');
+  const [pdfUmkmId, setPdfUmkmId] = useState<string>('');
+  const [pdfPeriodPreset, setPdfPeriodPreset] = useState<string>('thisMonth');
+  const [pdfStartDate, setPdfStartDate] = useState<string>('');
+  const [pdfEndDate, setPdfEndDate] = useState<string>('');
+  const [pdfSignerName, setPdfSignerName] = useState<string>('Administrator Banua Mentor');
+  const [pdfSignerTitle, setPdfSignerTitle] = useState<string>('Koordinator Monitoring & Evaluasi UMKM');
+
+  // Helper to compute date presets
+  const getDateRangeForPreset = (preset: string) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (preset === 'today') {
+      return { start: todayStr, end: todayStr };
+    }
+    if (preset === '7days') {
+      const past = new Date();
+      past.setDate(now.getDate() - 6);
+      return { start: past.toISOString().split('T')[0], end: todayStr };
+    }
+    if (preset === '30days') {
+      const past = new Date();
+      past.setDate(now.getDate() - 29);
+      return { start: past.toISOString().split('T')[0], end: todayStr };
+    }
+    if (preset === 'thisMonth') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { start: firstDay.toISOString().split('T')[0], end: todayStr };
+    }
+    if (preset === 'lastMonth') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { start: firstDay.toISOString().split('T')[0], end: lastDay.toISOString().split('T')[0] };
+    }
+    if (preset === 'thisYear') {
+      const firstDay = new Date(now.getFullYear(), 0, 1);
+      return { start: firstDay.toISOString().split('T')[0], end: todayStr };
+    }
+    return { start: '', end: '' };
+  };
+
+  // Set initial dates for "thisMonth"
+  useEffect(() => {
+    const dates = getDateRangeForPreset('thisMonth');
+    setStartDate(dates.start);
+    setEndDate(dates.end);
+
+    setPdfStartDate(dates.start);
+    setPdfEndDate(dates.end);
+  }, []);
+
+  // Fetch initial master data: UMKMs, Channels, Programs
+  useEffect(() => {
+    const loadMasterData = async () => {
+      try {
+        const [umkmRes, chanRes, progRes] = await Promise.all([
+          fetchWithAuth('/api/admin/umkm'),
+          fetchWithAuth('/api/sales-channels'),
+          fetchWithAuth('/api/programs'),
+        ]);
+
+        if (umkmRes.ok) {
+          const uList = await umkmRes.json();
+          setUmkms(Array.isArray(uList) ? uList : []);
+        }
+        if (chanRes.ok) {
+          const cList = await chanRes.json();
+          setChannels(Array.isArray(cList) ? cList : []);
+        }
+        if (progRes.ok) {
+          const pList = await progRes.json();
+          setPrograms(Array.isArray(pList) ? pList : []);
+        }
+      } catch (err) {
+        console.error('Error loading master data:', err);
+      }
+    };
+
+    loadMasterData();
+  }, []);
+
+  // Load Sales Data whenever filters change
+  const loadSales = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedUmkmId !== 'all') {
+        params.append('umkmId', selectedUmkmId);
+      }
+      if (selectedChannelId !== 'all') {
+        params.append('channelId', selectedChannelId);
+      }
+      if (selectedProgramId !== 'all') {
+        params.append('programId', selectedProgramId);
+      }
+      if (startDate) {
+        params.append('startDate', startDate);
+      }
+      if (endDate) {
+        params.append('endDate', endDate);
+      }
+      if (search.trim()) {
+        params.append('search', search.trim());
+      }
+
+      const res = await fetchWithAuth(`/api/sales?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSales(Array.isArray(data) ? data : []);
+      } else {
+        console.warn('Failed to fetch sales, status:', res.status);
+      }
+    } catch (err) {
+      console.error('Error loading sales:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSales();
+  }, [selectedUmkmId, selectedProgramId, selectedChannelId, startDate, endDate]);
+
+  // Handle Preset Changes for main view
+  const handlePresetChange = (preset: string) => {
+    setPeriodPreset(preset);
+    if (preset === 'allTime') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset !== 'custom') {
+      const dates = getDateRangeForPreset(preset);
+      setStartDate(dates.start);
+      setEndDate(dates.end);
+    }
+  };
+
+  // Handle Preset Changes for PDF Modal
+  const handlePdfPresetChange = (preset: string) => {
+    setPdfPeriodPreset(preset);
+    if (preset === 'allTime') {
+      setPdfStartDate('');
+      setPdfEndDate('');
+    } else if (preset !== 'custom') {
+      const dates = getDateRangeForPreset(preset);
+      setPdfStartDate(dates.start);
+      setPdfEndDate(dates.end);
+    }
+  };
+
+  // Client-side search filtering (if typing without hitting search)
+  const filteredSales = useMemo(() => {
+    if (!search.trim()) return sales;
+    const q = search.trim().toLowerCase();
+    return sales.filter((s) => {
+      return (
+        String(s.id).includes(q) ||
+        (s.customerName && s.customerName.toLowerCase().includes(q)) ||
+        (s.businessName && s.businessName.toLowerCase().includes(q)) ||
+        (s.ownerName && s.ownerName.toLowerCase().includes(q)) ||
+        (s.notes && s.notes.toLowerCase().includes(q)) ||
+        (s.channelName && s.channelName.toLowerCase().includes(q)) ||
+        (s.items && s.items.some((it) => it.productNameSnapshot && it.productNameSnapshot.toLowerCase().includes(q)))
+      );
+    });
+  }, [sales, search]);
+
+  // Real-time Financial Aggregates
+  const stats = useMemo(() => {
+    const totalRev = filteredSales.reduce((acc, s) => acc + (s.totalRevenue || 0), 0);
+    const totalHpp = filteredSales.reduce((acc, s) => acc + (s.totalHpp || 0), 0);
+    const totalProfit = filteredSales.reduce((acc, s) => acc + (s.grossProfit || 0), 0);
+    const margin = totalRev > 0 ? (totalProfit / totalRev) * 100 : 0;
+    const totalCount = filteredSales.length;
+
+    let totalUnits = 0;
+    filteredSales.forEach((s) => {
+      if (s.items) {
+        s.items.forEach((it) => {
+          totalUnits += it.quantity || 0;
+        });
+      }
+    });
+
+    const atv = totalCount > 0 ? totalRev / totalCount : 0;
+    const uniqueUmkms = new Set(filteredSales.map((s) => s.umkmId)).size;
+
+    return {
+      totalRev,
+      totalHpp,
+      totalProfit,
+      margin,
+      totalCount,
+      totalUnits,
+      atv,
+      uniqueUmkms,
+    };
+  }, [filteredSales]);
+
+  // Reset all filters
+  const handleResetFilters = () => {
+    setSelectedUmkmId('all');
+    setSelectedProgramId('all');
+    setSelectedChannelId('all');
+    setSearch('');
+    const dates = getDateRangeForPreset('thisMonth');
+    setPeriodPreset('thisMonth');
+    setStartDate(dates.start);
+    setEndDate(dates.end);
+  };
+
+  // Quick Export with current active filter
+  const handleQuickExportCurrent = () => {
+    if (filteredSales.length === 0) {
+      alert('Tidak ada data transaksi yang dapat dicetak dengan filter saat ini.');
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      const isSingle = selectedUmkmId !== 'all';
+      const umkmTarget = isSingle ? umkms.find((u) => String(u.id) === selectedUmkmId) : null;
+
+      const periodLabel =
+        startDate && endDate
+          ? `${formatDate(startDate)} s/d ${formatDate(endDate)}`
+          : startDate
+          ? `Mulai ${formatDate(startDate)}`
+          : endDate
+          ? `Sampai ${formatDate(endDate)}`
+          : 'Semua Waktu';
+
+      const filename = exportTransactionsReportPDF({
+        scope: isSingle ? 'SINGLE' : 'ALL',
+        targetName: isSingle ? umkmTarget?.businessName || `UMKM #${selectedUmkmId}` : 'Konsolidasi Seluruh UMKM',
+        ownerName: umkmTarget?.ownerName,
+        businessSector: umkmTarget?.businessSector,
+        cityRegency: umkmTarget?.cityRegency,
+        periodLabel,
+        generatedBy: user?.fullName || 'Administrator Sistem',
+        sales: filteredSales,
+      });
+
+      setToastMessage(`Laporan PDF "${filename}" berhasil diunduh!`);
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+      alert('Gagal membuat laporan PDF: ' + (err as Error).message);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // Modal PDF Generation
+  const handleGeneratePdfFromModal = async () => {
+    setExportingPdf(true);
+    try {
+      // Fetch target sales specifically for this export
+      const params = new URLSearchParams();
+      if (pdfScope === 'SINGLE' && pdfUmkmId) {
+        params.append('umkmId', pdfUmkmId);
+      }
+      if (pdfStartDate) {
+        params.append('startDate', pdfStartDate);
+      }
+      if (pdfEndDate) {
+        params.append('endDate', pdfEndDate);
+      }
+
+      const res = await fetchWithAuth(`/api/sales?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error('Gagal memuat data transaksi dari server');
+      }
+
+      const targetSales: Sale[] = await res.json();
+      if (!Array.isArray(targetSales) || targetSales.length === 0) {
+        alert('Tidak ada transaksi yang tercatat pada periode dan sasaran yang dipilih.');
+        setExportingPdf(false);
+        return;
+      }
+
+      const isSingle = pdfScope === 'SINGLE' && Boolean(pdfUmkmId);
+      const targetUmkm = isSingle ? umkms.find((u) => String(u.id) === pdfUmkmId) : null;
+
+      const periodLabel =
+        pdfStartDate && pdfEndDate
+          ? `${formatDate(pdfStartDate)} s/d ${formatDate(pdfEndDate)}`
+          : pdfStartDate
+          ? `Mulai ${formatDate(pdfStartDate)}`
+          : pdfEndDate
+          ? `Sampai ${formatDate(pdfEndDate)}`
+          : 'Semua Periode';
+
+      const filename = exportTransactionsReportPDF({
+        scope: isSingle ? 'SINGLE' : 'ALL',
+        targetName: isSingle ? targetUmkm?.businessName || `UMKM #${pdfUmkmId}` : 'Konsolidasi Seluruh UMKM',
+        ownerName: targetUmkm?.ownerName,
+        businessSector: targetUmkm?.businessSector,
+        cityRegency: targetUmkm?.cityRegency,
+        periodLabel,
+        generatedBy: user?.fullName || 'Administrator Sistem',
+        signerName: pdfSignerName || 'Koordinator Pendampingan UMKM',
+        signerTitle: pdfSignerTitle || 'Dinas Koperasi & UMKM / Banua Mentor',
+        sales: targetSales,
+      });
+
+      setShowPdfModal(false);
+      setToastMessage(`Laporan PDF "${filename}" berhasil diunduh!`);
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err: any) {
+      console.error('Error generating PDF from modal:', err);
+      alert('Gagal mengekspor PDF: ' + err.message);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // Open single sale detail
+  const handleOpenSaleDetail = async (sale: Sale) => {
+    try {
+      const res = await fetchWithAuth(`/api/sales/${sale.id}`);
+      if (res.ok) {
+        const full = await res.json();
+        setSelectedSale(full);
+      } else {
+        setSelectedSale(sale);
+      }
+    } catch (e) {
+      setSelectedSale(sale);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl animate-in fade-in slide-in-from-bottom-5">
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Header & Main Actions */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Transaksi & Laporan Finansial UMKM
+            </h1>
+            <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+              Admin Reporting
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Monitoring seluruh transaksi penjualan UMKM, analisis detail nota/invoice, dan cetak laporan PDF resmi per UMKM maupun konsolidasi seluruh UMKM.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Download with Current Filter */}
+          <button
+            onClick={handleQuickExportCurrent}
+            disabled={exportingPdf || filteredSales.length === 0}
+            title="Download PDF langsung dengan filter yang sedang aktif di layar"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+          >
+            <Download className="h-4 w-4 text-slate-500" />
+            <span>Unduh PDF Cepat</span>
+          </button>
+
+          {/* Full PDF Report Generator Modal */}
+          <button
+            onClick={() => {
+              if (selectedUmkmId !== 'all') {
+                setPdfScope('SINGLE');
+                setPdfUmkmId(selectedUmkmId);
+              } else {
+                setPdfScope('ALL');
+                setPdfUmkmId('');
+              }
+              setShowPdfModal(true);
+            }}
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
+          >
+            <FileText className="h-4 w-4" />
+            <span>Buat Laporan PDF Resmi</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Top Filter Bar */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+            <Filter className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Filter Transaksi & Periode Pelaporan</span>
+          </div>
+          <button
+            onClick={handleResetFilters}
+            className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Reset Filter</span>
+          </button>
+        </div>
+
+        {/* Filter Grid */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* 1. Target UMKM */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Sasaran UMKM
+            </label>
+            <div className="relative">
+              <select
+                value={selectedUmkmId}
+                onChange={(e) => setSelectedUmkmId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 cursor-pointer"
+              >
+                <option value="all">Semua UMKM (Konsolidasi Keseluruhan)</option>
+                {umkms.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.businessName} ({u.ownerName})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 pointer-events-none text-slate-400" />
+            </div>
+          </div>
+
+          {/* 2. Program Pendampingan */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Program Pendampingan
+            </label>
+            <div className="relative">
+              <select
+                value={selectedProgramId}
+                onChange={(e) => setSelectedProgramId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 cursor-pointer"
+              >
+                <option value="all">Semua Program Pendampingan</option>
+                {programs.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 pointer-events-none text-slate-400" />
+            </div>
+          </div>
+
+          {/* 3. Saluran Penjualan */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Saluran Penjualan (Channel)
+            </label>
+            <div className="relative">
+              <select
+                value={selectedChannelId}
+                onChange={(e) => setSelectedChannelId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 cursor-pointer"
+              >
+                <option value="all">Semua Saluran Penjualan</option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 pointer-events-none text-slate-400" />
+            </div>
+          </div>
+
+          {/* 4. Pencarian Cepat */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              Cari Transaksi / Nota
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Cari ID, UMKM, produk, pelanggan..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadSales()}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 pl-8 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Periode Preset Buttons & Custom Date Range */}
+        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-500 mr-1">Periode:</span>
+            {[
+              { id: 'today', label: 'Hari Ini' },
+              { id: '7days', label: '7 Hari' },
+              { id: '30days', label: '30 Hari' },
+              { id: 'thisMonth', label: 'Bulan Ini' },
+              { id: 'lastMonth', label: 'Bulan Lalu' },
+              { id: 'thisYear', label: 'Tahun 2026' },
+              { id: 'allTime', label: 'Semua Waktu' },
+              { id: 'custom', label: 'Kustom' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => handlePresetChange(p.id)}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                  periodPreset === p.id
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Picker Range */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <span className="text-[11px] text-slate-400">Dari</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setPeriodPreset('custom');
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <span className="text-slate-300">-</span>
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <span className="text-[11px] text-slate-400">Sampai</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setPeriodPreset('custom');
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Financial KPI Summary Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total Omzet Penjualan"
+          value={formatCurrency(stats.totalRev)}
+          icon={DollarSign}
+          subtext={`${formatNumber(stats.totalCount)} Transaksi • ${stats.uniqueUmkms} UMKM`}
+          variant="accent"
+        />
+
+        <StatCard
+          label="Total Laba Kotor (Gross)"
+          value={formatCurrency(stats.totalProfit)}
+          icon={TrendingUp}
+          subtext={`Margin Rata-rata: ${formatPercent(stats.margin)}`}
+          variant="success"
+        />
+
+        <StatCard
+          label="Total HPP Terakumulasi"
+          value={formatCurrency(stats.totalHpp)}
+          icon={Package}
+          subtext={`Total Unit Terjual: ${formatNumber(stats.totalUnits)} pcs`}
+        />
+
+        <StatCard
+          label="Rata-rata Nilai Transaksi (ATV)"
+          value={formatCurrency(stats.atv)}
+          icon={Receipt}
+          subtext={`Efisiensi: ${stats.margin >= 25 ? 'Tinggi (>=25%)' : 'Normal (<25%)'}`}
+        />
+      </div>
+
+      {/* Transactions Data Table */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {/* Table Header Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-slate-100 bg-slate-50/50">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">
+                Daftar Transaksi UMKM
+              </h2>
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                {formatNumber(filteredSales.length)} transaksi
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              {selectedUmkmId !== 'all'
+                ? `Menampilkan transaksi untuk ${umkms.find((u) => String(u.id) === selectedUmkmId)?.businessName || 'UMKM Terpilih'}`
+                : 'Menampilkan transaksi konsolidasi seluruh UMKM'}
+            </p>
+          </div>
+
+          <div className="text-xs font-semibold text-slate-600">
+            Total Nilai: <span className="text-indigo-600 font-bold">{formatCurrency(stats.totalRev)}</span>
+          </div>
+        </div>
+
+        {/* Table Container */}
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              <p className="mt-3 text-xs font-medium">Memuat data transaksi UMKM...</p>
+            </div>
+          ) : filteredSales.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400">
+              <Receipt className="h-10 w-10 text-slate-300 stroke-1" />
+              <p className="mt-3 text-sm font-bold text-slate-700">Tidak ada transaksi ditemukan</p>
+              <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                Tidak ada transaksi yang cocok dengan kriteria filter atau periode yang dipilih. Silakan sesuaikan tanggal atau pilihan UMKM.
+              </p>
+              <button
+                onClick={handleResetFilters}
+                className="mt-4 rounded-lg bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                Reset Semua Filter
+              </button>
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold text-slate-600">
+                <tr>
+                  <th className="py-3 px-4">No. Invoice & Tanggal</th>
+                  <th className="py-3 px-4">Identitas UMKM</th>
+                  <th className="py-3 px-4">Saluran & Pelanggan</th>
+                  <th className="py-3 px-4">Rincian Produk (Snapshot)</th>
+                  <th className="py-3 px-4 text-right">Omzet (Gross)</th>
+                  <th className="py-3 px-4 text-right">HPP</th>
+                  <th className="py-3 px-4 text-right">Laba Kotor</th>
+                  <th className="py-3 px-4 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredSales.map((sale) => {
+                  const margin = sale.totalRevenue > 0 ? (sale.grossProfit / sale.totalRevenue) * 100 : 0;
+                  const invNumber = `INV-${String(sale.id).padStart(5, '0')}`;
+                  const itemsSummary =
+                    sale.items && sale.items.length > 0
+                      ? sale.items.map((it) => `${it.productNameSnapshot} (x${it.quantity})`).join(', ')
+                      : '-';
+
+                  return (
+                    <tr key={sale.id} className="hover:bg-slate-50/70 transition-colors">
+                      {/* Invoice & Date */}
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900">{invNumber}</div>
+                        <div className="text-[11px] text-slate-500">{formatDate(sale.transactionDate)}</div>
+                      </td>
+
+                      {/* UMKM Identity */}
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900">{sale.businessName || `UMKM #${sale.umkmId}`}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {sale.ownerName || '-'} {sale.cityRegency ? `• ${sale.cityRegency}` : ''}
+                        </div>
+                      </td>
+
+                      {/* Channel & Customer */}
+                      <td className="py-3 px-4">
+                        <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                          {sale.channelName || 'Toko Fisik'}
+                        </span>
+                        <div className="mt-0.5 text-[11px] text-slate-600 truncate max-w-[120px]">
+                          {sale.customerName || 'Pelanggan Umum'}
+                        </div>
+                      </td>
+
+                      {/* Product Summary */}
+                      <td className="py-3 px-4 max-w-[220px]">
+                        <p className="text-xs text-slate-700 truncate" title={itemsSummary}>
+                          {itemsSummary}
+                        </p>
+                        {sale.items && (
+                          <span className="text-[10px] text-slate-400">
+                            {sale.items.length} varian produk
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Omzet */}
+                      <td className="py-3 px-4 text-right font-bold text-slate-900">
+                        {formatCurrency(sale.totalRevenue)}
+                      </td>
+
+                      {/* HPP */}
+                      <td className="py-3 px-4 text-right text-slate-500 font-medium">
+                        {formatCurrency(sale.totalHpp)}
+                      </td>
+
+                      {/* Profit & Margin */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="font-bold text-emerald-700">
+                          {formatCurrency(sale.grossProfit)}
+                        </div>
+                        <span
+                          className={`inline-block text-[10px] font-bold ${
+                            margin >= 30
+                              ? 'text-emerald-600'
+                              : margin >= 15
+                              ? 'text-amber-600'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          {formatPercent(margin)}
+                        </span>
+                      </td>
+
+                      {/* Action */}
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleOpenSaleDetail(sale)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 shadow-xs transition-colors cursor-pointer"
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>Detail</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* MODAL 1: Detail Nota Transaksi */}
+      {selectedSale && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 my-8">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <Receipt className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Detail Nota Transaksi INV-{String(selectedSale.id).padStart(5, '0')}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Dicatat pada {formatDate(selectedSale.transactionDate)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSale(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* UMKM Profile Banner */}
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-2">
+              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Profil Pelaku Usaha
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    {selectedSale.businessName || `UMKM #${selectedSale.umkmId}`}
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Pemilik: <span className="font-semibold">{selectedSale.ownerName || '-'}</span> • Sektor: {selectedSale.businessSector || 'Kuliner / F&B'}
+                  </p>
+                  {selectedSale.cityRegency && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Lokasi: {selectedSale.cityRegency} {selectedSale.address ? `(${selectedSale.address})` : ''}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right text-xs">
+                  <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                    Status: Sukses
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Channel: <span className="font-semibold text-slate-800">{selectedSale.channelName || 'Toko Fisik'}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer & Notes Info */}
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="rounded-lg border border-slate-100 p-3">
+                <span className="text-[11px] text-slate-400 block font-medium">Nama Pelanggan</span>
+                <span className="font-bold text-slate-800 mt-0.5 block">
+                  {selectedSale.customerName || 'Pelanggan Umum (Walk-in)'}
+                </span>
+              </div>
+              <div className="rounded-lg border border-slate-100 p-3">
+                <span className="text-[11px] text-slate-400 block font-medium">Catatan Khusus</span>
+                <span className="font-medium text-slate-700 mt-0.5 block">
+                  {selectedSale.notes || '-'}
+                </span>
+              </div>
+            </div>
+
+            {/* Items Breakdown Table */}
+            <div>
+              <h5 className="text-xs font-bold text-slate-800 mb-2">Rincian Item Produk & HPP Snapshot</h5>
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Produk</th>
+                      <th className="py-2.5 px-3 text-center">Qty</th>
+                      <th className="py-2.5 px-3 text-right">Harga Jual</th>
+                      <th className="py-2.5 px-3 text-right">HPP Satuan</th>
+                      <th className="py-2.5 px-3 text-right">Subtotal</th>
+                      <th className="py-2.5 px-3 text-right">Laba Kotor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedSale.items && selectedSale.items.length > 0 ? (
+                      selectedSale.items.map((it, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-3 font-semibold text-slate-900">{it.productNameSnapshot}</td>
+                          <td className="py-2 px-3 text-center text-slate-700">{it.quantity}</td>
+                          <td className="py-2 px-3 text-right text-slate-700">{formatCurrency(it.sellingPrice)}</td>
+                          <td className="py-2 px-3 text-right text-slate-500">{formatCurrency(it.hppSnapshot)}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">{formatCurrency(it.subtotal)}</td>
+                          <td className="py-2 px-3 text-right font-bold text-emerald-600">{formatCurrency(it.grossProfit)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-4 text-center text-slate-400">
+                          Tidak ada rincian item
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot className="bg-slate-50 font-bold text-xs border-t border-slate-200">
+                    <tr>
+                      <td colSpan={4} className="py-2.5 px-3 text-slate-800">Total Akumulasi Transaksi</td>
+                      <td className="py-2.5 px-3 text-right text-slate-900">{formatCurrency(selectedSale.totalRevenue)}</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-700">{formatCurrency(selectedSale.grossProfit)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Financial Summary Box */}
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-slate-500">Margin Laba Kotor: </span>
+                <span className="font-bold text-indigo-700">
+                  {selectedSale.totalRevenue > 0
+                    ? formatPercent((selectedSale.grossProfit / selectedSale.totalRevenue) * 100)
+                    : '0%'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500">Total HPP: </span>
+                <span className="font-bold text-slate-700">{formatCurrency(selectedSale.totalHpp)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Total Omzet: </span>
+                <span className="font-extrabold text-slate-900">{formatCurrency(selectedSale.totalRevenue)}</span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={() => exportSingleTransactionPDF(selectedSale)}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <Printer className="h-4 w-4 text-slate-500" />
+                <span>Cetak Nota PDF</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedSale(null)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Dialog Buat Laporan PDF Resmi */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Konfigurasi Laporan Transaksi PDF
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Format cetak standar resmi dengan kop dokumen, ringkasan finansial, tabel transaksi, dan legalitas pengesahan.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPdfModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Scope Selection */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-800">
+                1. Sasaran Laporan Transaksi
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPdfScope('ALL')}
+                  className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                    pdfScope === 'ALL'
+                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <Building2 className="h-4 w-4 text-indigo-600" />
+                    <span>Konsolidasi Seluruh UMKM</span>
+                  </div>
+                  <p className="mt-1 text-[11px] font-normal text-slate-500">
+                    Mencakup akumulasi data seluruh UMKM dampingan program.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfScope('SINGLE');
+                    if (!pdfUmkmId && umkms.length > 0) {
+                      setPdfUmkmId(String(umkms[0].id));
+                    }
+                  }}
+                  className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                    pdfScope === 'SINGLE'
+                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <Store className="h-4 w-4 text-indigo-600" />
+                    <span>Satu UMKM Spesifik</span>
+                  </div>
+                  <p className="mt-1 text-[11px] font-normal text-slate-500">
+                    Laporan kinerja eksklusif per satu unit usaha UMKM.
+                  </p>
+                </button>
+              </div>
+
+              {/* Specific UMKM Dropdown */}
+              {pdfScope === 'SINGLE' && (
+                <div className="mt-3 animate-in fade-in">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Pilih Unit Usaha UMKM:
+                  </label>
+                  <select
+                    value={pdfUmkmId}
+                    onChange={(e) => setPdfUmkmId(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+                  >
+                    {umkms.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.businessName} — {u.ownerName} ({u.cityRegency || 'Jawa Barat'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Period Selection */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-800">
+                2. Pilihan Periode Laporan
+              </label>
+
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'today', label: 'Hari Ini' },
+                  { id: '7days', label: '7 Hari Terakhir' },
+                  { id: '30days', label: '30 Hari Terakhir' },
+                  { id: 'thisMonth', label: 'Bulan Ini' },
+                  { id: 'lastMonth', label: 'Bulan Lalu' },
+                  { id: 'thisYear', label: 'Tahun Berjalan (2026)' },
+                  { id: 'allTime', label: 'Semua Waktu' },
+                  { id: 'custom', label: 'Rentang Kustom' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handlePdfPresetChange(p.id)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
+                      pdfPeriodPreset === p.id
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Start & End Date Inputs */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Tanggal Mulai:
+                  </label>
+                  <input
+                    type="date"
+                    value={pdfStartDate}
+                    onChange={(e) => {
+                      setPdfStartDate(e.target.value);
+                      setPdfPeriodPreset('custom');
+                    }}
+                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Tanggal Selesai:
+                  </label>
+                  <input
+                    type="date"
+                    value={pdfEndDate}
+                    onChange={(e) => {
+                      setPdfEndDate(e.target.value);
+                      setPdfPeriodPreset('custom');
+                    }}
+                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Document Signature Settings */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-800">
+                3. Pejabat Pengesah Dokumen (Tanda Tangan)
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Nama Penandatangan:
+                  </label>
+                  <input
+                    type="text"
+                    value={pdfSignerName}
+                    onChange={(e) => setPdfSignerName(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                    placeholder="Nama Pengesah"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Jabatan / Instansi:
+                  </label>
+                  <input
+                    type="text"
+                    value={pdfSignerTitle}
+                    onChange={(e) => setPdfSignerTitle(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                    placeholder="Jabatan"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowPdfModal(false)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGeneratePdfFromModal}
+                disabled={exportingPdf}
+                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-indigo-500 disabled:opacity-50 cursor-pointer transition-all active:scale-95"
+              >
+                {exportingPdf ? (
+                  <>
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <span>Membuat PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    <span>Unduh Dokumen PDF</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

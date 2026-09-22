@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { Program, MentorAssignment } from '../../types/index.ts';
 import { formatDate } from '../../utils/formatters.ts';
+import { AdminProgramDetail } from './AdminProgramDetail.tsx';
 import {
   Layers,
   Plus,
@@ -15,10 +16,17 @@ import {
   Mail,
   Copy,
   ExternalLink,
+  ChevronRight,
+  Users,
+  CheckSquare,
+  Square,
+  Search,
 } from 'lucide-react';
 
 export const AdminPrograms: React.FC = () => {
   const { fetchWithAuth } = useAuth();
+
+  const [selectedProgramId, setSelectedProgramId] = useState<number | null>(null);
 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [assignments, setAssignments] = useState<MentorAssignment[]>([]);
@@ -31,20 +39,22 @@ export const AdminPrograms: React.FC = () => {
   const [programForm, setProgramForm] = useState({
     name: '',
     description: '',
+    organizer: 'Dinas Koperasi & UMKM x Banua Mentor',
     batch: 'Batch 1 - 2026',
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
     targetParticipants: 25,
     status: 'ACTIVE',
   });
+  // Mentors selected during program creation (Multi-select)
+  const [selectedMentorIdsForNewProgram, setSelectedMentorIdsForNewProgram] = useState<number[]>([]);
+  const [mentorSearchInModal, setMentorSearchInModal] = useState<string>('');
 
-  // New Assignment Modal
+  // New Assignment Modal (Bulk-capable)
   const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
-  const [assignForm, setAssignForm] = useState({
-    programId: '',
-    mentorId: '',
-    umkmId: '',
-  });
+  const [assignProgramId, setAssignProgramId] = useState<string>('');
+  const [assignMentorId, setAssignMentorId] = useState<string>('');
+  const [assignTargetUmkmIds, setAssignTargetUmkmIds] = useState<number[]>([]);
 
   // Invite Mentor Modal
   const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
@@ -81,8 +91,8 @@ export const AdminPrograms: React.FC = () => {
       if (progRes.ok) {
         const pList = await progRes.json();
         setPrograms(pList);
-        if (pList.length > 0 && !assignForm.programId) {
-          setAssignForm((prev) => ({ ...prev, programId: String(pList[0].id) }));
+        if (pList.length > 0 && !assignProgramId) {
+          setAssignProgramId(String(pList[0].id));
         }
       }
 
@@ -90,16 +100,13 @@ export const AdminPrograms: React.FC = () => {
       if (mentorRes.ok) {
         const mList = await mentorRes.json();
         setMentors(mList);
-        if (mList.length > 0 && !assignForm.mentorId) {
-          setAssignForm((prev) => ({ ...prev, mentorId: String(mList[0].id) }));
+        if (mList.length > 0 && !assignMentorId) {
+          setAssignMentorId(String(mList[0].id));
         }
       }
       if (umkmRes.ok) {
         const uList = await umkmRes.json();
         setUmkms(uList);
-        if (uList.length > 0 && !assignForm.umkmId) {
-          setAssignForm((prev) => ({ ...prev, umkmId: String(uList[0].id) }));
-        }
       }
     } catch (err) {
       console.error(err);
@@ -119,15 +126,29 @@ export const AdminPrograms: React.FC = () => {
     try {
       const res = await fetchWithAuth('/api/programs', {
         method: 'POST',
-        body: JSON.stringify(programForm),
+        body: JSON.stringify({
+          ...programForm,
+          mentorIds: selectedMentorIdsForNewProgram,
+        }),
       });
 
       const resData = await res.json();
       if (!res.ok) throw new Error(resData.error || 'Gagal membuat program');
 
       setIsProgramModalOpen(false);
-      setSuccessMsg('Program pendampingan baru berhasil dibuat.');
-      loadAll();
+      setSelectedMentorIdsForNewProgram([]);
+      setProgramForm({
+        name: '',
+        description: '',
+        organizer: 'Dinas Koperasi & UMKM x Banua Mentor',
+        batch: 'Batch 1 - 2026',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: '',
+        targetParticipants: 25,
+        status: 'ACTIVE',
+      });
+      setSuccessMsg('Program pendampingan baru berhasil dibuat beserta mentor terpilih.');
+      await loadAll();
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -137,28 +158,48 @@ export const AdminPrograms: React.FC = () => {
 
   const handleSaveAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!assignProgramId || !assignMentorId || assignTargetUmkmIds.length === 0) {
+      setErrorMsg('Pilih program, mentor, dan minimal 1 UMKM target.');
+      return;
+    }
     setSaving(true);
     setErrorMsg(null);
     try {
-      const res = await fetchWithAuth('/api/assignments', {
+      const res = await fetchWithAuth('/api/assignments/bulk', {
         method: 'POST',
         body: JSON.stringify({
-          programId: Number(assignForm.programId),
-          mentorId: Number(assignForm.mentorId),
-          umkmId: Number(assignForm.umkmId),
+          programId: Number(assignProgramId),
+          mentorId: Number(assignMentorId),
+          umkmIds: assignTargetUmkmIds,
         }),
       });
 
       const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Gagal menugaskan mentor');
+      if (!res.ok) throw new Error(resData.error || 'Gagal membuat penugasan');
 
       setIsAssignModalOpen(false);
-      setSuccessMsg('Mentor berhasil ditugaskan ke UMKM terpilih.');
-      loadAll();
+      setAssignTargetUmkmIds([]);
+      setSuccessMsg(resData.message || 'Penugasan mentor berhasil disimpan.');
+      await loadAll();
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAssignment = async (assignmentId: number) => {
+    if (!window.confirm('Batalkan penugasan mentor ini?')) return;
+    try {
+      const res = await fetchWithAuth(`/api/assignments/${assignmentId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setSuccessMsg('Penugasan mentor berhasil dibatalkan.');
+        loadAll();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -166,22 +207,35 @@ export const AdminPrograms: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     setErrorMsg(null);
+    setInviteResult(null);
+
     try {
-      const res = await fetchWithAuth('/api/admin/invite-mentor', {
+      const res = await fetchWithAuth('/api/admin/mentors/invite', {
         method: 'POST',
         body: JSON.stringify(inviteForm),
       });
 
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error || 'Gagal mengirim undangan mentor');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal membuat undangan mentor');
+      }
 
       setInviteResult({
-        inviteUrl: resData.inviteUrl,
-        token: resData.inviteToken,
-        email: resData.email,
-        fullName: inviteForm.fullName,
+        inviteUrl: data.inviteUrl,
+        token: data.token,
+        email: data.email,
+        fullName: data.fullName,
       });
-      setSuccessMsg(`Undangan resmi berhasil disiapkan untuk ${inviteForm.fullName} (${resData.email})`);
+
+      setInviteForm({
+        fullName: '',
+        email: '',
+        whatsapp: '',
+        institution: '',
+        position: '',
+        expertise: '',
+      });
+
       loadAll();
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -190,17 +244,18 @@ export const AdminPrograms: React.FC = () => {
     }
   };
 
-  const handleDeleteAssignment = async (id: number) => {
-    if (!window.confirm('Hapus penugasan mentor ini?')) return;
-    try {
-      const res = await fetchWithAuth(`/api/assignments/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setAssignments(assignments.filter((a) => a.id !== id));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // If a program is selected, show detail view directly
+  if (selectedProgramId !== null) {
+    return (
+      <AdminProgramDetail
+        programId={selectedProgramId}
+        onBack={() => {
+          setSelectedProgramId(null);
+          loadAll();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -211,7 +266,7 @@ export const AdminPrograms: React.FC = () => {
             Program Pendampingan & Penugasan Mentor
           </h1>
           <p className="text-xs text-slate-500">
-            Kelola gelombang program pendampingan dan plotting mentor ke pelaku usaha binaan
+            Kelola program pendampingan, masukkan mentor & UMKM, dan plotting penugasan mentor sekaligus
           </p>
         </div>
 
@@ -229,7 +284,11 @@ export const AdminPrograms: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsProgramModalOpen(true)}
+            onClick={() => {
+              setSelectedMentorIdsForNewProgram([]);
+              setMentorSearchInModal('');
+              setIsProgramModalOpen(true);
+            }}
             className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
           >
             <Plus className="h-4 w-4" />
@@ -237,7 +296,16 @@ export const AdminPrograms: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsAssignModalOpen(true)}
+            onClick={() => {
+              if (programs.length > 0 && !assignProgramId) {
+                setAssignProgramId(String(programs[0].id));
+              }
+              if (mentors.length > 0 && !assignMentorId) {
+                setAssignMentorId(String(mentors[0].id));
+              }
+              setAssignTargetUmkmIds([]);
+              setIsAssignModalOpen(true);
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 transition-colors"
           >
             <UserCheck className="h-4 w-4" />
@@ -255,38 +323,80 @@ export const AdminPrograms: React.FC = () => {
 
       {/* Program Cards Grid */}
       <div className="space-y-3">
-        <h2 className="text-sm font-bold text-slate-900">Program Pendampingan Aktif</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-900">Daftar Program Pendampingan</h2>
+          <span className="text-xs text-slate-500">Klik program untuk mengelola UMKM & plotting mentor</span>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {programs.map((p) => (
-            <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-100">
-                    {p.batch}
-                  </span>
-                  <h3 className="text-sm font-bold text-slate-900 mt-2">{p.name}</h3>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    p.status === 'ACTIVE'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {p.status}
-                </span>
-              </div>
+          {programs.map((p) => {
+            // Count assignments in this program
+            const progAssignments = assignments.filter((a) => a.programId === p.id);
 
-              {p.description && <p className="text-xs text-slate-600">{p.description}</p>}
+            return (
+              <div
+                key={p.id}
+                className="group relative rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all space-y-3 flex flex-col justify-between"
+              >
+                <div className="space-y-2.5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-100">
+                        {p.batch || 'Batch 1'}
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 mt-2 group-hover:text-indigo-600 transition-colors">
+                        {p.name}
+                      </h3>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        p.status === 'ACTIVE'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
 
-              <div className="border-t border-slate-100 pt-2 text-[11px] text-slate-500 space-y-1">
-                <div>
-                  Mulai: {formatDate(p.startDate)} {p.endDate && `• Selesai: ${formatDate(p.endDate)}`}
+                  {p.description && (
+                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                      {p.description}
+                    </p>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                      <span>
+                        Mulai: {formatDate(p.startDate)} {p.endDate && `• Selesai: ${formatDate(p.endDate)}`}
+                      </span>
+                    </div>
+                    {p.organizer && (
+                      <div className="text-[11px] text-slate-600">
+                        Penyelenggara: <strong>{p.organizer}</strong>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>Target Peserta: {p.targetParticipants} UMKM</div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs text-indigo-700 font-semibold">
+                    <UserCheck className="h-4 w-4" />
+                    <span>{progAssignments.length} UMKM Terplot</span>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedProgramId(p.id)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>Detail & Kelola UMKM</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -362,12 +472,17 @@ export const AdminPrograms: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal: New Program */}
+      {/* Modal: New Program with DIRECT MULTI-MENTOR SELECTION */}
       {isProgramModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">Tambah Program Pendampingan</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Tambah Program Pendampingan</h3>
+                <p className="text-xs text-slate-500">
+                  Buat program baru dan tambahkan langsung lebih dari satu mentor ke dalamnya
+                </p>
+              </div>
               <button
                 onClick={() => setIsProgramModalOpen(false)}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
@@ -376,7 +491,7 @@ export const AdminPrograms: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProgram} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveProgram} className="space-y-4 text-xs overflow-y-auto pr-1">
               <div>
                 <label className="block font-semibold text-slate-700">Nama Program *</label>
                 <input
@@ -385,27 +500,38 @@ export const AdminPrograms: React.FC = () => {
                   placeholder="Contoh: Akselerasi UMKM Naik Kelas 2026"
                   value={programForm.name}
                   onChange={(e) => setProgramForm({ ...programForm, name: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:border-indigo-600"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700">Batch / Gelombang</label>
-                <input
-                  type="text"
-                  value={programForm.batch}
-                  onChange={(e) => setProgramForm({ ...programForm, batch: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700">Batch / Gelombang</label>
+                  <input
+                    type="text"
+                    value={programForm.batch}
+                    onChange={(e) => setProgramForm({ ...programForm, batch: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700">Penyelenggara / Organizer</label>
+                  <input
+                    type="text"
+                    value={programForm.organizer}
+                    onChange={(e) => setProgramForm({ ...programForm, organizer: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700">Deskripsi Ringkas</label>
+                <label className="block font-semibold text-slate-700">Deskripsi Program</label>
                 <textarea
                   rows={2}
                   value={programForm.description}
                   onChange={(e) => setProgramForm({ ...programForm, description: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 focus:outline-none focus:border-indigo-600"
                 />
               </div>
 
@@ -431,6 +557,95 @@ export const AdminPrograms: React.FC = () => {
                 </div>
               </div>
 
+              {/* Direct Multi-Mentor Selection */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-bold text-slate-900">
+                      Pilih Mentor Langsung ke Program (Bisa Lebih dari Satu)
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      {selectedMentorIdsForNewProgram.length} mentor dipilih
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedMentorIdsForNewProgram.length === mentors.length) {
+                        setSelectedMentorIdsForNewProgram([]);
+                      } else {
+                        setSelectedMentorIdsForNewProgram(mentors.map((m) => m.id));
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                  >
+                    {selectedMentorIdsForNewProgram.length === mentors.length
+                      ? 'Batalkan Semua'
+                      : 'Pilih Semua Mentor'}
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter mentor berdasarkan nama atau keahlian..."
+                    value={mentorSearchInModal}
+                    onChange={(e) => setMentorSearchInModal(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div className="max-h-40 overflow-y-auto space-y-1.5 border border-slate-200 rounded-xl p-2 bg-slate-50/50">
+                  {mentors
+                    .filter(
+                      (m) =>
+                        m.fullName.toLowerCase().includes(mentorSearchInModal.toLowerCase()) ||
+                        (m.expertise && m.expertise.toLowerCase().includes(mentorSearchInModal.toLowerCase()))
+                    )
+                    .map((m) => {
+                      const isChecked = selectedMentorIdsForNewProgram.includes(m.id);
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() =>
+                            setSelectedMentorIdsForNewProgram((prev) =>
+                              prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                            )
+                          }
+                          className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-all ${
+                            isChecked
+                              ? 'border-indigo-500 bg-indigo-50/60'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="mt-0.5">
+                            {isChecked ? (
+                              <CheckSquare className="h-4 w-4 text-indigo-600" />
+                            ) : (
+                              <Square className="h-4 w-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-900 truncate">{m.fullName}</span>
+                              <span className="text-[10px] text-slate-500 shrink-0 ml-1">
+                                {m.institution || 'Mentor'}
+                              </span>
+                            </div>
+                            {m.expertise && (
+                              <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                Keahlian: {m.expertise}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -444,7 +659,7 @@ export const AdminPrograms: React.FC = () => {
                   disabled={saving}
                   className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {saving ? 'Menyimpan...' : 'Simpan Program'}
+                  {saving ? 'Menyimpan...' : 'Simpan Program & Mentor'}
                 </button>
               </div>
             </form>
@@ -452,12 +667,17 @@ export const AdminPrograms: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Assign Mentor to UMKM */}
+      {/* Modal: Bulk Assign Mentor to UMKM */}
       {isAssignModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">Tugaskan Mentor ke UMKM</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Tugaskan Mentor ke UMKM</h3>
+                <p className="text-xs text-slate-500">
+                  Dapat menugaskan satu mentor ke lebih dari satu UMKM sekaligus
+                </p>
+              </div>
               <button
                 onClick={() => setIsAssignModalOpen(false)}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
@@ -466,14 +686,14 @@ export const AdminPrograms: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveAssignment} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveAssignment} className="space-y-4 text-xs overflow-y-auto pr-1">
               <div>
                 <label className="block font-semibold text-slate-700">Pilih Program *</label>
                 <select
                   required
-                  value={assignForm.programId}
-                  onChange={(e) => setAssignForm({ ...assignForm, programId: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none"
+                  value={assignProgramId}
+                  onChange={(e) => setAssignProgramId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none font-semibold text-slate-800"
                 >
                   {programs.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -487,32 +707,78 @@ export const AdminPrograms: React.FC = () => {
                 <label className="block font-semibold text-slate-700">Pilih Mentor Pendamping *</label>
                 <select
                   required
-                  value={assignForm.mentorId}
-                  onChange={(e) => setAssignForm({ ...assignForm, mentorId: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none"
+                  value={assignMentorId}
+                  onChange={(e) => setAssignMentorId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none font-semibold text-slate-800"
                 >
                   {mentors.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.fullName} - {m.institution || 'Mentor'}
+                      {m.fullName} ({m.institution || 'Mentor'})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700">Pilih UMKM Binaan *</label>
-                <select
-                  required
-                  value={assignForm.umkmId}
-                  onChange={(e) => setAssignForm({ ...assignForm, umkmId: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none"
-                >
-                  {umkms.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.businessName} (Owner: {u.ownerName})
-                    </option>
-                  ))}
-                </select>
+              {/* Multi-UMKM Checkbox Selection */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-900">
+                    Pilih UMKM Sasaran ({assignTargetUmkmIds.length} dipilih) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assignTargetUmkmIds.length === umkms.length) {
+                        setAssignTargetUmkmIds([]);
+                      } else {
+                        setAssignTargetUmkmIds(umkms.map((u) => u.id));
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                  >
+                    {assignTargetUmkmIds.length === umkms.length ? 'Batal Semua' : 'Pilih Semua UMKM'}
+                  </button>
+                </div>
+
+                <div className="max-h-52 overflow-y-auto space-y-1.5 border border-slate-200 rounded-xl p-2.5 bg-slate-50/50">
+                  {umkms.map((u) => {
+                    const isChecked = assignTargetUmkmIds.includes(u.id);
+                    return (
+                      <div
+                        key={u.id}
+                        onClick={() =>
+                          setAssignTargetUmkmIds((prev) =>
+                            prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                          )
+                        }
+                        className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-all ${
+                          isChecked
+                            ? 'border-indigo-500 bg-indigo-50/60'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="mt-0.5">
+                          {isChecked ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 truncate">{u.businessName}</span>
+                            <span className="text-[10px] text-slate-500 shrink-0 ml-1">
+                              {u.cityRegency || '-'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Pemilik: {u.ownerName} • {u.businessSector || 'UMKM'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -525,10 +791,10 @@ export const AdminPrograms: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  disabled={saving || assignTargetUmkmIds.length === 0}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {saving ? 'Menyimpan...' : 'Plotting Mentor'}
+                  {saving ? 'Menyimpan...' : `Plotting ke (${assignTargetUmkmIds.length}) UMKM`}
                 </button>
               </div>
             </form>

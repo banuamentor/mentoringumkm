@@ -96,6 +96,15 @@ export interface Sale {
   grossProfit: number;
   createdAt: string;
   items?: SaleItem[];
+  businessName?: string;
+  ownerName?: string;
+  cityRegency?: string;
+  district?: string;
+  address?: string;
+  businessSector?: string;
+  commodity?: string;
+  whatsapp?: string;
+  email?: string;
 }
 
 export interface Program {
@@ -134,10 +143,22 @@ export interface MentoringSession {
   id: number;
   programId: number;
   programName?: string;
+  programDescription?: string;
   mentorId: number;
   mentorName?: string;
+  mentorInstitution?: string;
+  mentorPosition?: string;
+  mentorEmail?: string;
+  mentorWhatsapp?: string;
+  mentorExpertise?: string;
   umkmId: number;
   businessName?: string;
+  ownerName?: string;
+  cityRegency?: string;
+  district?: string;
+  address?: string;
+  businessSector?: string;
+  whatsapp?: string;
   sessionDate: string;
   topic: string;
   problem: string | null;
@@ -145,6 +166,7 @@ export interface MentoringSession {
   recommendation: string;
   additionalNotes: string | null;
   createdAt: string;
+  actionPlans?: ActionPlan[];
 }
 
 export interface ActionPlanEvaluation {
@@ -166,8 +188,12 @@ export interface ActionPlan {
   mentoringSessionId: number | null;
   mentorId: number;
   mentorName?: string;
+  mentorInstitution?: string;
   umkmId: number;
   businessName?: string;
+  ownerName?: string;
+  cityRegency?: string;
+  businessSector?: string;
   title: string;
   description: string | null;
   target: string | null;

@@ -757,12 +757,12 @@ apiRouter.get('/sales-channels', async (req, res) => {
 
 apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
   try {
-    let targetUmkmId: number;
+    let targetUmkmId: number | null = null;
 
     if (req.profile!.role === 'UMKM') {
       if (!req.umkm) return res.json([]);
       targetUmkmId = req.umkm.id;
-    } else if (req.query.umkmId) {
+    } else if (req.query.umkmId && req.query.umkmId !== 'all') {
       targetUmkmId = Number(req.query.umkmId);
       // If mentor, verify active assignment
       if (req.profile!.role === 'MENTOR') {
@@ -782,13 +782,20 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
           return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki assignment aktif ke UMKM ini.' });
         }
       }
+    } else if (req.profile!.role === 'ADMIN') {
+      // Admin is querying overall transactions across all UMKMs
+      targetUmkmId = null;
     } else {
       return res.status(400).json({ error: 'Parameter umkmId diperlukan.' });
     }
 
-    const { startDate, endDate, channelId, search } = req.query;
+    const { startDate, endDate, channelId, search, programId } = req.query;
 
-    let conditions = [eq(sales.umkmId, targetUmkmId), isNull(sales.deletedAt)];
+    let conditions: any[] = [isNull(sales.deletedAt)];
+
+    if (targetUmkmId !== null && !isNaN(targetUmkmId)) {
+      conditions.push(eq(sales.umkmId, targetUmkmId));
+    }
 
     if (startDate) {
       conditions.push(gte(sales.transactionDate, String(startDate)));
@@ -798,6 +805,21 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
     }
     if (channelId && Number(channelId) > 0) {
       conditions.push(eq(sales.salesChannelId, Number(channelId)));
+    }
+
+    // Program filter support
+    if (programId && Number(programId) > 0) {
+      const progUmkms = await db
+        .select({ umkmId: mentorAssignments.umkmId })
+        .from(mentorAssignments)
+        .where(eq(mentorAssignments.programId, Number(programId)));
+
+      const progUmkmIds = Array.from(new Set(progUmkms.map((p) => p.umkmId)));
+      if (progUmkmIds.length > 0) {
+        conditions.push(inArray(sales.umkmId, progUmkmIds));
+      } else {
+        return res.json([]);
+      }
     }
 
     const salesList = await db
@@ -813,9 +835,14 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
         grossProfit: sales.grossProfit,
         createdAt: sales.createdAt,
         channelName: salesChannels.name,
+        businessName: umkmProfiles.businessName,
+        ownerName: umkmProfiles.ownerName,
+        cityRegency: umkmProfiles.cityRegency,
+        businessSector: umkmProfiles.businessSector,
       })
       .from(sales)
       .leftJoin(salesChannels, eq(sales.salesChannelId, salesChannels.id))
+      .leftJoin(umkmProfiles, eq(sales.umkmId, umkmProfiles.id))
       .where(and(...conditions))
       .orderBy(desc(sales.transactionDate), desc(sales.id));
 
@@ -835,10 +862,26 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const result = salesList.map((s) => ({
+    let result = salesList.map((s) => ({
       ...s,
       items: itemsMap[s.id] || [],
     }));
+
+    // In-memory search for customer, product snapshot, business name, or notes
+    if (search && String(search).trim()) {
+      const q = String(search).trim().toLowerCase();
+      result = result.filter((s) => {
+        return (
+          String(s.id).includes(q) ||
+          (s.customerName && s.customerName.toLowerCase().includes(q)) ||
+          (s.businessName && s.businessName.toLowerCase().includes(q)) ||
+          (s.ownerName && s.ownerName.toLowerCase().includes(q)) ||
+          (s.notes && s.notes.toLowerCase().includes(q)) ||
+          (s.channelName && s.channelName.toLowerCase().includes(q)) ||
+          s.items.some((it: any) => it.productNameSnapshot && it.productNameSnapshot.toLowerCase().includes(q))
+        );
+      });
+    }
 
     res.json(result);
   } catch (error: any) {
@@ -864,9 +907,19 @@ apiRouter.get('/sales/:id', requireAuth, async (req: AuthRequest, res) => {
         grossProfit: sales.grossProfit,
         createdAt: sales.createdAt,
         channelName: salesChannels.name,
+        businessName: umkmProfiles.businessName,
+        ownerName: umkmProfiles.ownerName,
+        whatsapp: umkmProfiles.whatsapp,
+        email: umkmProfiles.email,
+        cityRegency: umkmProfiles.cityRegency,
+        district: umkmProfiles.district,
+        address: umkmProfiles.address,
+        businessSector: umkmProfiles.businessSector,
+        commodity: umkmProfiles.commodity,
       })
       .from(sales)
       .leftJoin(salesChannels, eq(sales.salesChannelId, salesChannels.id))
+      .leftJoin(umkmProfiles, eq(sales.umkmId, umkmProfiles.id))
       .where(eq(sales.id, saleId))
       .limit(1);
 
@@ -881,7 +934,24 @@ apiRouter.get('/sales/:id', requireAuth, async (req: AuthRequest, res) => {
       if (!req.umkm || req.umkm.id !== saleData.umkmId) {
         return res.status(403).json({ error: 'Akses ditolak: Transaksi bukan milik UMKM Anda' });
       }
+    } else if (req.profile!.role === 'MENTOR') {
+      const assignment = await db
+        .select()
+        .from(mentorAssignments)
+        .where(
+          and(
+            eq(mentorAssignments.mentorId, req.mentor!.id),
+            eq(mentorAssignments.umkmId, saleData.umkmId),
+            eq(mentorAssignments.status, 'ACTIVE')
+          )
+        )
+        .limit(1);
+
+      if (assignment.length === 0) {
+        return res.status(403).json({ error: 'Akses ditolak: Anda tidak memiliki assignment aktif ke UMKM ini.' });
+      }
     }
+    // ADMIN has unrestricted access
 
     const items = await db.select().from(saleItems).where(eq(saleItems.saleId, saleId));
 
@@ -1400,7 +1470,7 @@ apiRouter.get('/programs/:id', requireAuth, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Program tidak ditemukan' });
     }
 
-    // Get participants
+    // Get all active participants
     const participants = await db
       .select({
         id: programParticipants.id,
@@ -1427,16 +1497,84 @@ apiRouter.get('/programs/:id', requireAuth, async (req: AuthRequest, res) => {
         mentorEmail: mentorProfiles.email,
         businessName: umkmProfiles.businessName,
         ownerName: umkmProfiles.ownerName,
+        cityRegency: umkmProfiles.cityRegency,
+        businessSector: umkmProfiles.businessSector,
       })
       .from(mentorAssignments)
       .innerJoin(mentorProfiles, eq(mentorAssignments.mentorId, mentorProfiles.id))
       .innerJoin(umkmProfiles, eq(mentorAssignments.umkmId, umkmProfiles.id))
-      .where(eq(mentorAssignments.programId, programId));
+      .where(and(eq(mentorAssignments.programId, programId), eq(mentorAssignments.status, 'ACTIVE')));
+
+    // Build assignment lookup by umkmId
+    const assignmentMap = new Map<number, typeof assignments[0]>();
+    for (const a of assignments) {
+      assignmentMap.set(a.umkmId, a);
+    }
+
+    // Build mentor assigned counts lookup
+    const mentorCountMap = new Map<number, number>();
+    for (const a of assignments) {
+      mentorCountMap.set(a.mentorId, (mentorCountMap.get(a.mentorId) || 0) + 1);
+    }
+
+    // Get detailed mentor profiles enrolled in this program
+    const mentorProfileIds = participants
+      .filter((p) => p.participantRole === 'MENTOR')
+      .map((p) => p.profileId);
+
+    let enrolledMentors: any[] = [];
+    if (mentorProfileIds.length > 0) {
+      const mProfiles = await db
+        .select()
+        .from(mentorProfiles)
+        .where(inArray(mentorProfiles.profileId, mentorProfileIds));
+
+      enrolledMentors = mProfiles.map((m) => ({
+        ...m,
+        assignedUmkmCount: mentorCountMap.get(m.id) || 0,
+      }));
+    }
+
+    // Get detailed UMKM profiles enrolled in this program
+    const umkmProfileIds = participants
+      .filter((p) => p.participantRole === 'UMKM')
+      .map((p) => p.profileId);
+
+    let enrolledUmkms: any[] = [];
+    if (umkmProfileIds.length > 0) {
+      const uProfiles = await db
+        .select()
+        .from(umkmProfiles)
+        .where(inArray(umkmProfiles.profileId, umkmProfileIds));
+
+      enrolledUmkms = uProfiles.map((u) => {
+        const assign = assignmentMap.get(u.id);
+        return {
+          ...u,
+          assignmentId: assign?.id || null,
+          assignedMentorId: assign?.mentorId || null,
+          assignedMentorName: assign?.mentorName || null,
+          assignedMentorEmail: assign?.mentorEmail || null,
+          assignedAt: assign?.assignedAt || null,
+        };
+      });
+    }
+
+    const assignedUmkmsCount = enrolledUmkms.filter((u) => u.assignedMentorId !== null).length;
+    const unassignedUmkmsCount = enrolledUmkms.length - assignedUmkmsCount;
 
     res.json({
       program: prog[0],
       participants,
+      mentors: enrolledMentors,
+      umkms: enrolledUmkms,
       assignments,
+      stats: {
+        totalUmkms: enrolledUmkms.length,
+        totalMentors: enrolledMentors.length,
+        assignedUmkmsCount,
+        unassignedUmkmsCount,
+      },
     });
   } catch (error: any) {
     console.error('Error fetching program detail:', error);
@@ -1446,7 +1584,7 @@ apiRouter.get('/programs/:id', requireAuth, async (req: AuthRequest, res) => {
 
 apiRouter.post('/programs', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
-    const { name, description, organizer, startDate, endDate, status } = req.body;
+    const { name, description, organizer, startDate, endDate, status, mentorIds } = req.body;
     if (!name || name.trim() === '') {
       return res.status(400).json({ error: 'Nama program wajib diisi' });
     }
@@ -1464,11 +1602,246 @@ apiRouter.post('/programs', requireAuth, requireRole(['ADMIN']), async (req: Aut
       })
       .returning();
 
-    await logAudit(req.profile!.id, 'CREATE_PROGRAM', 'programs', inserted[0].id, { name });
+    const newProgramId = inserted[0].id;
+
+    // Direct addition of multiple mentors into the new program
+    if (Array.isArray(mentorIds) && mentorIds.length > 0) {
+      const selectedMentors = await db
+        .select({ id: mentorProfiles.id, profileId: mentorProfiles.profileId })
+        .from(mentorProfiles)
+        .where(inArray(mentorProfiles.id, mentorIds.map(Number)));
+
+      for (const m of selectedMentors) {
+        await db.insert(programParticipants).values({
+          programId: newProgramId,
+          profileId: m.profileId,
+          participantRole: 'MENTOR',
+          status: 'ACTIVE',
+        });
+      }
+    }
+
+    await logAudit(req.profile!.id, 'CREATE_PROGRAM', 'programs', newProgramId, {
+      name,
+      initialMentorsCount: Array.isArray(mentorIds) ? mentorIds.length : 0,
+    });
+
     res.status(201).json({ message: 'Program berhasil dibuat', program: inserted[0] });
   } catch (error: any) {
     console.error('Error creating program:', error);
     res.status(500).json({ error: 'Gagal membuat program' });
+  }
+});
+
+// Add multiple mentors to an existing program
+apiRouter.post('/programs/:id/mentors', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const programId = Number(req.params.id);
+    const { mentorIds } = req.body;
+
+    if (!Array.isArray(mentorIds) || mentorIds.length === 0) {
+      return res.status(400).json({ error: 'Daftar mentor wajib dipilih' });
+    }
+
+    const numericMentorIds = mentorIds.map(Number).filter((n) => !isNaN(n));
+    if (numericMentorIds.length === 0) {
+      return res.status(400).json({ error: 'ID mentor tidak valid' });
+    }
+
+    const mentors = await db
+      .select({ id: mentorProfiles.id, profileId: mentorProfiles.profileId, fullName: mentorProfiles.fullName })
+      .from(mentorProfiles)
+      .where(inArray(mentorProfiles.id, numericMentorIds));
+
+    let addedCount = 0;
+    for (const m of mentors) {
+      const existing = await db
+        .select()
+        .from(programParticipants)
+        .where(
+          and(
+            eq(programParticipants.programId, programId),
+            eq(programParticipants.profileId, m.profileId),
+            eq(programParticipants.participantRole, 'MENTOR')
+          )
+        )
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(programParticipants).values({
+          programId,
+          profileId: m.profileId,
+          participantRole: 'MENTOR',
+          status: 'ACTIVE',
+        });
+        addedCount++;
+      } else if (existing[0].status !== 'ACTIVE') {
+        await db
+          .update(programParticipants)
+          .set({ status: 'ACTIVE', removedAt: null })
+          .where(eq(programParticipants.id, existing[0].id));
+        addedCount++;
+      }
+    }
+
+    await logAudit(req.profile!.id, 'ADD_MENTORS_TO_PROGRAM', 'programs', programId, {
+      mentorIds: numericMentorIds,
+      addedCount,
+    });
+
+    res.json({ message: `Berhasil menambahkan ${addedCount} mentor ke dalam program`, addedCount });
+  } catch (error: any) {
+    console.error('Error adding mentors to program:', error);
+    res.status(500).json({ error: 'Gagal menambahkan mentor ke program' });
+  }
+});
+
+// Remove mentor from program
+apiRouter.delete('/programs/:id/mentors/:mentorId', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const programId = Number(req.params.id);
+    const mentorId = Number(req.params.mentorId);
+
+    const m = await db.select().from(mentorProfiles).where(eq(mentorProfiles.id, mentorId)).limit(1);
+    if (m.length === 0) {
+      return res.status(404).json({ error: 'Mentor tidak ditemukan' });
+    }
+
+    // Deactivate participant
+    await db
+      .update(programParticipants)
+      .set({ status: 'INACTIVE', removedAt: new Date() })
+      .where(
+        and(
+          eq(programParticipants.programId, programId),
+          eq(programParticipants.profileId, m[0].profileId),
+          eq(programParticipants.participantRole, 'MENTOR')
+        )
+      );
+
+    // End active assignments for this mentor in this program
+    await db
+      .update(mentorAssignments)
+      .set({ status: 'ENDED', endedAt: new Date() })
+      .where(
+        and(
+          eq(mentorAssignments.programId, programId),
+          eq(mentorAssignments.mentorId, mentorId),
+          eq(mentorAssignments.status, 'ACTIVE')
+        )
+      );
+
+    await logAudit(req.profile!.id, 'REMOVE_MENTOR_FROM_PROGRAM', 'programs', programId, { mentorId });
+    res.json({ message: 'Mentor berhasil dihapus dari program' });
+  } catch (error: any) {
+    console.error('Error removing mentor from program:', error);
+    res.status(500).json({ error: 'Gagal menghapus mentor dari program' });
+  }
+});
+
+// Add multiple UMKMs to a program (called when viewing program detail)
+apiRouter.post('/programs/:id/umkms', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const programId = Number(req.params.id);
+    const { umkmIds } = req.body;
+
+    if (!Array.isArray(umkmIds) || umkmIds.length === 0) {
+      return res.status(400).json({ error: 'Daftar UMKM wajib dipilih' });
+    }
+
+    const numericUmkmIds = umkmIds.map(Number).filter((n) => !isNaN(n));
+    if (numericUmkmIds.length === 0) {
+      return res.status(400).json({ error: 'ID UMKM tidak valid' });
+    }
+
+    const umkms = await db
+      .select({ id: umkmProfiles.id, profileId: umkmProfiles.profileId, businessName: umkmProfiles.businessName })
+      .from(umkmProfiles)
+      .where(inArray(umkmProfiles.id, numericUmkmIds));
+
+    let addedCount = 0;
+    for (const u of umkms) {
+      const existing = await db
+        .select()
+        .from(programParticipants)
+        .where(
+          and(
+            eq(programParticipants.programId, programId),
+            eq(programParticipants.profileId, u.profileId),
+            eq(programParticipants.participantRole, 'UMKM')
+          )
+        )
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(programParticipants).values({
+          programId,
+          profileId: u.profileId,
+          participantRole: 'UMKM',
+          status: 'ACTIVE',
+        });
+        addedCount++;
+      } else if (existing[0].status !== 'ACTIVE') {
+        await db
+          .update(programParticipants)
+          .set({ status: 'ACTIVE', removedAt: null })
+          .where(eq(programParticipants.id, existing[0].id));
+        addedCount++;
+      }
+    }
+
+    await logAudit(req.profile!.id, 'ADD_UMKMS_TO_PROGRAM', 'programs', programId, {
+      umkmIds: numericUmkmIds,
+      addedCount,
+    });
+
+    res.json({ message: `Berhasil menambahkan ${addedCount} UMKM ke dalam program`, addedCount });
+  } catch (error: any) {
+    console.error('Error adding UMKMs to program:', error);
+    res.status(500).json({ error: 'Gagal menambahkan UMKM ke program' });
+  }
+});
+
+// Remove UMKM from program
+apiRouter.delete('/programs/:id/umkms/:umkmId', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const programId = Number(req.params.id);
+    const umkmId = Number(req.params.umkmId);
+
+    const u = await db.select().from(umkmProfiles).where(eq(umkmProfiles.id, umkmId)).limit(1);
+    if (u.length === 0) {
+      return res.status(404).json({ error: 'UMKM tidak ditemukan' });
+    }
+
+    // Deactivate participant
+    await db
+      .update(programParticipants)
+      .set({ status: 'INACTIVE', removedAt: new Date() })
+      .where(
+        and(
+          eq(programParticipants.programId, programId),
+          eq(programParticipants.profileId, u[0].profileId),
+          eq(programParticipants.participantRole, 'UMKM')
+        )
+      );
+
+    // End active assignment for this UMKM in this program
+    await db
+      .update(mentorAssignments)
+      .set({ status: 'ENDED', endedAt: new Date() })
+      .where(
+        and(
+          eq(mentorAssignments.programId, programId),
+          eq(mentorAssignments.umkmId, umkmId),
+          eq(mentorAssignments.status, 'ACTIVE')
+        )
+      );
+
+    await logAudit(req.profile!.id, 'REMOVE_UMKM_FROM_PROGRAM', 'programs', programId, { umkmId });
+    res.json({ message: 'UMKM berhasil dikeluarkan dari program' });
+  } catch (error: any) {
+    console.error('Error removing UMKM from program:', error);
+    res.status(500).json({ error: 'Gagal mengeluarkan UMKM dari program' });
   }
 });
 
@@ -1510,6 +1883,17 @@ apiRouter.get('/assignments', requireAuth, async (req: AuthRequest, res) => {
     } else if (req.profile!.role === 'UMKM') {
       if (!req.umkm) return res.json([]);
       conditions.push(eq(mentorAssignments.umkmId, req.umkm.id));
+    } else {
+      if (req.query.mentorId && req.query.mentorId !== 'all') {
+        conditions.push(eq(mentorAssignments.mentorId, Number(req.query.mentorId)));
+      }
+    }
+
+    if (req.query.programId && req.query.programId !== 'all') {
+      conditions.push(eq(mentorAssignments.programId, Number(req.query.programId)));
+    }
+    if (req.query.umkmId && req.query.umkmId !== 'all') {
+      conditions.push(eq(mentorAssignments.umkmId, Number(req.query.umkmId)));
     }
 
     const list = await db
@@ -1521,6 +1905,8 @@ apiRouter.get('/assignments', requireAuth, async (req: AuthRequest, res) => {
         mentorName: mentorProfiles.fullName,
         mentorEmail: mentorProfiles.email,
         mentorPhotoUrl: mentorProfiles.photoUrl,
+        mentorInstitution: mentorProfiles.institution,
+        mentorPosition: mentorProfiles.position,
         mentorExpertise: mentorProfiles.expertise,
         umkmId: mentorAssignments.umkmId,
         businessName: umkmProfiles.businessName,
@@ -1534,7 +1920,7 @@ apiRouter.get('/assignments', requireAuth, async (req: AuthRequest, res) => {
       .innerJoin(programs, eq(mentorAssignments.programId, programs.id))
       .innerJoin(mentorProfiles, eq(mentorAssignments.mentorId, mentorProfiles.id))
       .innerJoin(umkmProfiles, eq(mentorAssignments.umkmId, umkmProfiles.id))
-      .where(and(...conditions));
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     res.json(list);
   } catch (error: any) {
@@ -1543,6 +1929,7 @@ apiRouter.get('/assignments', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Single assignment
 apiRouter.post('/assignments', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
   try {
     const { programId, mentorId, umkmId } = req.body;
@@ -1550,45 +1937,251 @@ apiRouter.post('/assignments', requireAuth, requireRole(['ADMIN']), async (req: 
       return res.status(400).json({ error: 'Program, Mentor, dan UMKM wajib dipilih' });
     }
 
-    // Check duplicate active assignment
+    const pId = Number(programId);
+    const mId = Number(mentorId);
+    const uId = Number(umkmId);
+
+    // Auto-enroll mentor and umkm into program participants if not already enrolled
+    const mentorRecord = await db.select().from(mentorProfiles).where(eq(mentorProfiles.id, mId)).limit(1);
+    if (mentorRecord.length > 0) {
+      const partM = await db
+        .select()
+        .from(programParticipants)
+        .where(
+          and(
+            eq(programParticipants.programId, pId),
+            eq(programParticipants.profileId, mentorRecord[0].profileId),
+            eq(programParticipants.participantRole, 'MENTOR')
+          )
+        )
+        .limit(1);
+
+      if (partM.length === 0) {
+        await db.insert(programParticipants).values({
+          programId: pId,
+          profileId: mentorRecord[0].profileId,
+          participantRole: 'MENTOR',
+          status: 'ACTIVE',
+        });
+      }
+    }
+
+    const umkmRecord = await db.select().from(umkmProfiles).where(eq(umkmProfiles.id, uId)).limit(1);
+    if (umkmRecord.length > 0) {
+      const partU = await db
+        .select()
+        .from(programParticipants)
+        .where(
+          and(
+            eq(programParticipants.programId, pId),
+            eq(programParticipants.profileId, umkmRecord[0].profileId),
+            eq(programParticipants.participantRole, 'UMKM')
+          )
+        )
+        .limit(1);
+
+      if (partU.length === 0) {
+        await db.insert(programParticipants).values({
+          programId: pId,
+          profileId: umkmRecord[0].profileId,
+          participantRole: 'UMKM',
+          status: 'ACTIVE',
+        });
+      }
+    }
+
+    // Check existing active assignment for this UMKM in this program
     const existing = await db
       .select()
       .from(mentorAssignments)
       .where(
         and(
-          eq(mentorAssignments.programId, Number(programId)),
-          eq(mentorAssignments.mentorId, Number(mentorId)),
-          eq(mentorAssignments.umkmId, Number(umkmId)),
+          eq(mentorAssignments.programId, pId),
+          eq(mentorAssignments.umkmId, uId),
           eq(mentorAssignments.status, 'ACTIVE')
         )
       )
       .limit(1);
 
     if (existing.length > 0) {
-      return res.status(400).json({ error: 'Penugasan aktif mentor ke UMKM tersebut sudah terdaftar dalam program ini.' });
+      if (existing[0].mentorId === mId) {
+        return res.status(200).json({ message: 'Mentor sudah ditugaskan ke UMKM ini.', assignment: existing[0] });
+      }
+      // Reassign: end previous assignment
+      await db
+        .update(mentorAssignments)
+        .set({ status: 'ENDED', endedAt: new Date() })
+        .where(eq(mentorAssignments.id, existing[0].id));
     }
 
     const inserted = await db
       .insert(mentorAssignments)
       .values({
-        programId: Number(programId),
-        mentorId: Number(mentorId),
-        umkmId: Number(umkmId),
+        programId: pId,
+        mentorId: mId,
+        umkmId: uId,
         status: 'ACTIVE',
         createdBy: req.profile!.id,
       })
       .returning();
 
     await logAudit(req.profile!.id, 'ASSIGN_MENTOR', 'mentor_assignments', inserted[0].id, {
-      programId,
-      mentorId,
-      umkmId,
+      programId: pId,
+      mentorId: mId,
+      umkmId: uId,
     });
 
     res.status(201).json({ message: 'Mentor berhasil ditugaskan ke UMKM', assignment: inserted[0] });
   } catch (error: any) {
     console.error('Error creating assignment:', error);
     res.status(500).json({ error: 'Gagal membuat penugasan mentor' });
+  }
+});
+
+// Bulk assignment: Assign a mentor to MULTIPLE UMKMs simultaneously
+apiRouter.post('/assignments/bulk', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { programId, mentorId, umkmIds } = req.body;
+    if (!programId || !mentorId || !Array.isArray(umkmIds) || umkmIds.length === 0) {
+      return res.status(400).json({ error: 'Program, Mentor, dan minimal 1 UMKM wajib dipilih' });
+    }
+
+    const pId = Number(programId);
+    const mId = Number(mentorId);
+    const numericUmkmIds = umkmIds.map(Number).filter((n) => !isNaN(n));
+
+    if (numericUmkmIds.length === 0) {
+      return res.status(400).json({ error: 'ID UMKM tidak valid' });
+    }
+
+    // Verify mentor exists
+    const mentorRecord = await db.select().from(mentorProfiles).where(eq(mentorProfiles.id, mId)).limit(1);
+    if (mentorRecord.length === 0) {
+      return res.status(404).json({ error: 'Mentor tidak ditemukan' });
+    }
+
+    // Auto-enroll mentor in program participants if needed
+    const partM = await db
+      .select()
+      .from(programParticipants)
+      .where(
+        and(
+          eq(programParticipants.programId, pId),
+          eq(programParticipants.profileId, mentorRecord[0].profileId),
+          eq(programParticipants.participantRole, 'MENTOR')
+        )
+      )
+      .limit(1);
+
+    if (partM.length === 0) {
+      await db.insert(programParticipants).values({
+        programId: pId,
+        profileId: mentorRecord[0].profileId,
+        participantRole: 'MENTOR',
+        status: 'ACTIVE',
+      });
+    }
+
+    let assignedCount = 0;
+    for (const uId of numericUmkmIds) {
+      const umkmRecord = await db.select().from(umkmProfiles).where(eq(umkmProfiles.id, uId)).limit(1);
+      if (umkmRecord.length === 0) continue;
+
+      // Auto-enroll UMKM in program participants if needed
+      const partU = await db
+        .select()
+        .from(programParticipants)
+        .where(
+          and(
+            eq(programParticipants.programId, pId),
+            eq(programParticipants.profileId, umkmRecord[0].profileId),
+            eq(programParticipants.participantRole, 'UMKM')
+          )
+        )
+        .limit(1);
+
+      if (partU.length === 0) {
+        await db.insert(programParticipants).values({
+          programId: pId,
+          profileId: umkmRecord[0].profileId,
+          participantRole: 'UMKM',
+          status: 'ACTIVE',
+        });
+      }
+
+      // Check existing active assignment
+      const existing = await db
+        .select()
+        .from(mentorAssignments)
+        .where(
+          and(
+            eq(mentorAssignments.programId, pId),
+            eq(mentorAssignments.umkmId, uId),
+            eq(mentorAssignments.status, 'ACTIVE')
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        if (existing[0].mentorId === mId) {
+          // Already assigned to this mentor
+          assignedCount++;
+          continue;
+        }
+        // End old assignment
+        await db
+          .update(mentorAssignments)
+          .set({ status: 'ENDED', endedAt: new Date() })
+          .where(eq(mentorAssignments.id, existing[0].id));
+      }
+
+      // Insert new assignment
+      await db.insert(mentorAssignments).values({
+        programId: pId,
+        mentorId: mId,
+        umkmId: uId,
+        status: 'ACTIVE',
+        createdBy: req.profile!.id,
+      });
+
+      assignedCount++;
+    }
+
+    await logAudit(req.profile!.id, 'BULK_ASSIGN_MENTOR', 'mentor_assignments', pId, {
+      programId: pId,
+      mentorId: mId,
+      mentorName: mentorRecord[0].fullName,
+      assignedCount,
+      umkmIds: numericUmkmIds,
+    });
+
+    res.status(201).json({
+      message: `Berhasil menugaskan ${mentorRecord[0].fullName} ke ${assignedCount} UMKM terpilih`,
+      assignedCount,
+    });
+  } catch (error: any) {
+    console.error('Error in bulk assignment:', error);
+    res.status(500).json({ error: 'Gagal melakukan penugasan masal mentor' });
+  }
+});
+
+// Delete or cancel an assignment
+apiRouter.delete('/assignments/:id', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const assignmentId = Number(req.params.id);
+    await db
+      .update(mentorAssignments)
+      .set({
+        status: 'ENDED',
+        endedAt: new Date(),
+      })
+      .where(eq(mentorAssignments.id, assignmentId));
+
+    await logAudit(req.profile!.id, 'DELETE_ASSIGNMENT', 'mentor_assignments', assignmentId);
+    res.json({ message: 'Penugasan mentor berhasil dibatalkan' });
+  } catch (error: any) {
+    console.error('Error deleting assignment:', error);
+    res.status(500).json({ error: 'Gagal menghapus penugasan mentor' });
   }
 });
 
@@ -1626,8 +2219,23 @@ apiRouter.get('/mentoring-sessions', requireAuth, async (req: AuthRequest, res) 
     } else if (req.profile!.role === 'UMKM') {
       if (!req.umkm) return res.json([]);
       conditions.push(eq(mentoringSessions.umkmId, req.umkm.id));
-    } else if (req.query.umkmId) {
+    } else {
+      if (req.query.mentorId && req.query.mentorId !== 'all') {
+        conditions.push(eq(mentoringSessions.mentorId, Number(req.query.mentorId)));
+      }
+    }
+
+    if (req.query.umkmId && req.query.umkmId !== 'all') {
       conditions.push(eq(mentoringSessions.umkmId, Number(req.query.umkmId)));
+    }
+    if (req.query.programId && req.query.programId !== 'all') {
+      conditions.push(eq(mentoringSessions.programId, Number(req.query.programId)));
+    }
+    if (req.query.startDate) {
+      conditions.push(gte(mentoringSessions.sessionDate, String(req.query.startDate)));
+    }
+    if (req.query.endDate) {
+      conditions.push(lte(mentoringSessions.sessionDate, String(req.query.endDate)));
     }
 
     const list = await db
@@ -1637,8 +2245,15 @@ apiRouter.get('/mentoring-sessions', requireAuth, async (req: AuthRequest, res) 
         programName: programs.name,
         mentorId: mentoringSessions.mentorId,
         mentorName: mentorProfiles.fullName,
+        mentorInstitution: mentorProfiles.institution,
+        mentorPosition: mentorProfiles.position,
+        mentorEmail: mentorProfiles.email,
+        mentorWhatsapp: mentorProfiles.whatsapp,
         umkmId: mentoringSessions.umkmId,
         businessName: umkmProfiles.businessName,
+        ownerName: umkmProfiles.ownerName,
+        cityRegency: umkmProfiles.cityRegency,
+        businessSector: umkmProfiles.businessSector,
         sessionDate: mentoringSessions.sessionDate,
         topic: mentoringSessions.topic,
         problem: mentoringSessions.problem,
@@ -1654,10 +2269,99 @@ apiRouter.get('/mentoring-sessions', requireAuth, async (req: AuthRequest, res) 
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(mentoringSessions.sessionDate));
 
-    res.json(list);
+    let result = list;
+    if (req.query.search) {
+      const q = String(req.query.search).toLowerCase();
+      result = list.filter((s) => {
+        return (
+          (s.topic && s.topic.toLowerCase().includes(q)) ||
+          (s.businessName && s.businessName.toLowerCase().includes(q)) ||
+          (s.ownerName && s.ownerName.toLowerCase().includes(q)) ||
+          (s.mentorName && s.mentorName.toLowerCase().includes(q)) ||
+          (s.programName && s.programName.toLowerCase().includes(q)) ||
+          (s.problem && s.problem.toLowerCase().includes(q)) ||
+          (s.recommendation && s.recommendation.toLowerCase().includes(q)) ||
+          (s.findings && s.findings.toLowerCase().includes(q))
+        );
+      });
+    }
+
+    res.json(result);
   } catch (error: any) {
     console.error('Error fetching mentoring sessions:', error);
     res.status(500).json({ error: 'Gagal mengambil daftar sesi mentoring' });
+  }
+});
+
+// Single mentoring session detail with associated action plans
+apiRouter.get('/mentoring-sessions/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const sessionId = Number(req.params.id);
+    if (!sessionId) return res.status(400).json({ error: 'ID sesi tidak valid' });
+
+    const sessionRes = await db
+      .select({
+        id: mentoringSessions.id,
+        programId: mentoringSessions.programId,
+        programName: programs.name,
+        programDescription: programs.description,
+        mentorId: mentoringSessions.mentorId,
+        mentorName: mentorProfiles.fullName,
+        mentorInstitution: mentorProfiles.institution,
+        mentorPosition: mentorProfiles.position,
+        mentorEmail: mentorProfiles.email,
+        mentorWhatsapp: mentorProfiles.whatsapp,
+        mentorExpertise: mentorProfiles.expertise,
+        umkmId: mentoringSessions.umkmId,
+        businessName: umkmProfiles.businessName,
+        ownerName: umkmProfiles.ownerName,
+        cityRegency: umkmProfiles.cityRegency,
+        district: umkmProfiles.district,
+        address: umkmProfiles.address,
+        businessSector: umkmProfiles.businessSector,
+        whatsapp: umkmProfiles.whatsapp,
+        sessionDate: mentoringSessions.sessionDate,
+        topic: mentoringSessions.topic,
+        problem: mentoringSessions.problem,
+        findings: mentoringSessions.findings,
+        recommendation: mentoringSessions.recommendation,
+        additionalNotes: mentoringSessions.additionalNotes,
+        createdAt: mentoringSessions.createdAt,
+      })
+      .from(mentoringSessions)
+      .innerJoin(programs, eq(mentoringSessions.programId, programs.id))
+      .innerJoin(mentorProfiles, eq(mentoringSessions.mentorId, mentorProfiles.id))
+      .innerJoin(umkmProfiles, eq(mentoringSessions.umkmId, umkmProfiles.id))
+      .where(eq(mentoringSessions.id, sessionId))
+      .limit(1);
+
+    if (sessionRes.length === 0) {
+      return res.status(404).json({ error: 'Sesi mentoring tidak ditemukan' });
+    }
+
+    const session = sessionRes[0];
+
+    // Authorization check
+    if (req.profile!.role === 'MENTOR' && req.mentor && session.mentorId !== req.mentor.id) {
+      return res.status(403).json({ error: 'Akses ditolak' });
+    }
+    if (req.profile!.role === 'UMKM' && req.umkm && session.umkmId !== req.umkm.id) {
+      return res.status(403).json({ error: 'Akses ditolak' });
+    }
+
+    const aPlans = await db
+      .select()
+      .from(actionPlans)
+      .where(eq(actionPlans.mentoringSessionId, sessionId))
+      .orderBy(desc(actionPlans.deadline));
+
+    res.json({
+      ...session,
+      actionPlans: aPlans,
+    });
+  } catch (error: any) {
+    console.error('Error fetching mentoring session detail:', error);
+    res.status(500).json({ error: 'Gagal mengambil detail sesi mentoring' });
   }
 });
 
@@ -1728,8 +2432,26 @@ apiRouter.get('/action-plans', requireAuth, async (req: AuthRequest, res) => {
     } else if (req.profile!.role === 'UMKM') {
       if (!req.umkm) return res.json([]);
       conditions.push(eq(actionPlans.umkmId, req.umkm.id));
-    } else if (req.query.umkmId) {
+    } else {
+      if (req.query.mentorId && req.query.mentorId !== 'all') {
+        conditions.push(eq(actionPlans.mentorId, Number(req.query.mentorId)));
+      }
+    }
+
+    if (req.query.umkmId && req.query.umkmId !== 'all') {
       conditions.push(eq(actionPlans.umkmId, Number(req.query.umkmId)));
+    }
+    if (req.query.programId && req.query.programId !== 'all') {
+      conditions.push(eq(actionPlans.programId, Number(req.query.programId)));
+    }
+    if (req.query.status && req.query.status !== 'all') {
+      conditions.push(eq(actionPlans.status, req.query.status as any));
+    }
+    if (req.query.startDate) {
+      conditions.push(gte(actionPlans.deadline, String(req.query.startDate)));
+    }
+    if (req.query.endDate) {
+      conditions.push(lte(actionPlans.deadline, String(req.query.endDate)));
     }
 
     const list = await db
@@ -1740,8 +2462,12 @@ apiRouter.get('/action-plans', requireAuth, async (req: AuthRequest, res) => {
         mentoringSessionId: actionPlans.mentoringSessionId,
         mentorId: actionPlans.mentorId,
         mentorName: mentorProfiles.fullName,
+        mentorInstitution: mentorProfiles.institution,
         umkmId: actionPlans.umkmId,
         businessName: umkmProfiles.businessName,
+        ownerName: umkmProfiles.ownerName,
+        cityRegency: umkmProfiles.cityRegency,
+        businessSector: umkmProfiles.businessSector,
         title: actionPlans.title,
         description: actionPlans.description,
         target: actionPlans.target,
@@ -1778,7 +2504,7 @@ apiRouter.get('/action-plans', requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const enriched = list.map((a) => {
+    let enriched = list.map((a) => {
       const isOverdue = a.deadline < todayStr && a.status !== 'COMPLETED' && a.status !== 'CANCELLED';
       return {
         ...a,
@@ -1786,6 +2512,22 @@ apiRouter.get('/action-plans', requireAuth, async (req: AuthRequest, res) => {
         evaluations: evalMap[a.id] || [],
       };
     });
+
+    if (req.query.search) {
+      const q = String(req.query.search).toLowerCase();
+      enriched = enriched.filter((a) => {
+        return (
+          (a.title && a.title.toLowerCase().includes(q)) ||
+          (a.description && a.description.toLowerCase().includes(q)) ||
+          (a.target && a.target.toLowerCase().includes(q)) ||
+          (a.pic && a.pic.toLowerCase().includes(q)) ||
+          (a.businessName && a.businessName.toLowerCase().includes(q)) ||
+          (a.ownerName && a.ownerName.toLowerCase().includes(q)) ||
+          (a.mentorName && a.mentorName.toLowerCase().includes(q)) ||
+          (a.programName && a.programName.toLowerCase().includes(q))
+        );
+      });
+    }
 
     res.json(enriched);
   } catch (error: any) {

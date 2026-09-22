@@ -3,6 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './src/server/routes.ts';
 import { ensureSequencesSynced } from './src/db/index.ts';
+import { ensureDemoEcosystemSeeded } from './src/server/seed-ecosystem.ts';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -10,6 +11,7 @@ dotenv.config();
 async function startServer() {
   // Sync database sequence counters to prevent pkey collisions
   await ensureSequencesSynced().catch((e) => console.warn('Sequence sync warning:', e));
+  await ensureDemoEcosystemSeeded().catch((e) => console.warn('Seed warning:', e));
 
   const app = express();
   const PORT = 3000;

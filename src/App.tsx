@@ -23,6 +23,8 @@ import { MentorProfile } from './views/mentor/MentorProfile.tsx';
 
 // Admin Views
 import { AdminDashboard } from './views/admin/AdminDashboard.tsx';
+import { AdminMentoringActivities } from './views/admin/AdminMentoringActivities.tsx';
+import { AdminTransactions } from './views/admin/AdminTransactions.tsx';
 import { AdminPrograms } from './views/admin/AdminPrograms.tsx';
 import { AdminMentors } from './views/admin/AdminMentors.tsx';
 import { AdminAuditLogs } from './views/admin/AdminAuditLogs.tsx';
@@ -175,6 +177,8 @@ const MainLayout: React.FC = () => {
                 {activeTab === 'admin-dashboard' && (
                   <AdminDashboard onNavigate={(t) => setActiveTab(t)} />
                 )}
+                {activeTab === 'admin-mentoring' && <AdminMentoringActivities />}
+                {activeTab === 'admin-transactions' && <AdminTransactions />}
                 {activeTab === 'admin-programs' && <AdminPrograms />}
                 {activeTab === 'admin-mentors' && <AdminMentors />}
                 {activeTab === 'admin-audit' && <AdminAuditLogs />}
