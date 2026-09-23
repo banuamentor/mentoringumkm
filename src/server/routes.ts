@@ -878,12 +878,28 @@ apiRouter.get('/sales', requireAuth, async (req: AuthRequest, res) => {
 
     // Program filter support
     if (programId && Number(programId) > 0) {
+      const pid = Number(programId);
       const progUmkms = await db
         .select({ umkmId: mentorAssignments.umkmId })
         .from(mentorAssignments)
-        .where(eq(mentorAssignments.programId, Number(programId)));
+        .where(eq(mentorAssignments.programId, pid));
 
-      const progUmkmIds = Array.from(new Set(progUmkms.map((p) => p.umkmId)));
+      const progParticipants = await db
+        .select({ profileId: programParticipants.profileId })
+        .from(programParticipants)
+        .where(and(eq(programParticipants.programId, pid), eq(programParticipants.status, 'ACTIVE')));
+
+      let participantUmkmIds: number[] = [];
+      if (progParticipants.length > 0) {
+        const pProfiles = progParticipants.map((p) => p.profileId);
+        const matchingUmkms = await db
+          .select({ id: umkmProfiles.id })
+          .from(umkmProfiles)
+          .where(inArray(umkmProfiles.profileId, pProfiles));
+        participantUmkmIds = matchingUmkms.map((u) => u.id);
+      }
+
+      const progUmkmIds = Array.from(new Set([...progUmkms.map((p) => p.umkmId), ...participantUmkmIds]));
       if (progUmkmIds.length > 0) {
         conditions.push(inArray(sales.umkmId, progUmkmIds));
       } else {
@@ -2953,6 +2969,7 @@ const getAdminUmkmList = async (req: AuthRequest, res: Response) => {
     const umkms = await db
       .select({
         id: umkmProfiles.id,
+        profileId: umkmProfiles.profileId,
         businessName: umkmProfiles.businessName,
         ownerName: umkmProfiles.ownerName,
         cityRegency: umkmProfiles.cityRegency,
@@ -2996,18 +3013,41 @@ const getAdminUmkmList = async (req: AuthRequest, res: Response) => {
         const activePlans = aPlans.filter((p) => p.status === 'NOT_STARTED' || p.status === 'IN_PROGRESS');
         const overduePlans = activePlans.filter((p) => p.deadline < todayStr);
 
-        // Program assignment
+        // Program assignment & participation
         const assign = await db
-          .select({ programName: programs.name, mentorName: mentorProfiles.fullName })
+          .select({
+            programId: mentorAssignments.programId,
+            programName: programs.name,
+            mentorName: mentorProfiles.fullName,
+          })
           .from(mentorAssignments)
           .innerJoin(programs, eq(mentorAssignments.programId, programs.id))
           .innerJoin(mentorProfiles, eq(mentorAssignments.mentorId, mentorProfiles.id))
-          .where(and(eq(mentorAssignments.umkmId, u.id), eq(mentorAssignments.status, 'ACTIVE')))
-          .limit(1);
+          .where(and(eq(mentorAssignments.umkmId, u.id), eq(mentorAssignments.status, 'ACTIVE')));
+
+        const participantPrograms = await db
+          .select({
+            programId: programParticipants.programId,
+            programName: programs.name,
+          })
+          .from(programParticipants)
+          .innerJoin(programs, eq(programParticipants.programId, programs.id))
+          .where(and(eq(programParticipants.profileId, u.profileId), eq(programParticipants.status, 'ACTIVE')));
+
+        const allProgramIds = Array.from(
+          new Set([
+            ...assign.map((a) => a.programId),
+            ...participantPrograms.map((p) => p.programId),
+          ])
+        );
+
+        const primaryProgram = assign[0] || participantPrograms[0] || null;
 
         return {
           ...u,
-          programName: assign[0]?.programName || 'Belum Terdaftar Program',
+          programId: primaryProgram?.programId || null,
+          programIds: allProgramIds,
+          programName: primaryProgram?.programName || 'Belum Terdaftar Program',
           mentorName: assign[0]?.mentorName || 'Belum Ada Mentor',
           totalRevenue: revenue,
           totalGrossProfit: profit,

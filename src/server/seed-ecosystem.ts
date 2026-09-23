@@ -5,6 +5,38 @@ import { hashPassword } from './auth-utils.ts';
 
 export async function ensureDemoEcosystemSeeded(): Promise<void> {
   try {
+    // 0. Ensure Super Administrator account exists and is active with credentials
+    const adminEmail = 'banuamentor@gmail.com';
+    const adminPasswordHash = hashPassword('12345678');
+    const existingAdmin = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.email, adminEmail))
+      .limit(1);
+
+    if (existingAdmin.length === 0) {
+      await db.insert(profiles).values({
+        firebaseUid: 'uid-admin-banuamentor',
+        email: adminEmail,
+        fullName: 'Administrator Banua Mentor',
+        role: 'ADMIN',
+        accountStatus: 'ACTIVE',
+        passwordHash: adminPasswordHash,
+      });
+      console.log('✅ Admin account banuamentor@gmail.com created successfully');
+    } else {
+      await db
+        .update(profiles)
+        .set({
+          fullName: 'Administrator Banua Mentor',
+          role: 'ADMIN',
+          accountStatus: 'ACTIVE',
+          passwordHash: adminPasswordHash,
+        })
+        .where(eq(profiles.id, existingAdmin[0].id));
+      console.log('✅ Admin account banuamentor@gmail.com updated with role ADMIN and password');
+    }
+
     const existingMentors = await db.select().from(mentorProfiles);
     const existingUmkms = await db.select().from(umkmProfiles);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { Sale, SalesChannel, UmkmProfile, Program } from '../../types/index.ts';
+import { Sale, SalesChannel, Program } from '../../types/index.ts';
 import { formatCurrency, formatDate, formatPercent, formatNumber } from '../../utils/formatters.ts';
 import { exportTransactionsReportPDF, exportSingleTransactionPDF } from '../../utils/pdfExport.ts';
 import { StatCard } from '../../components/StatCard.tsx';
@@ -10,12 +10,10 @@ import {
   Filter,
   Download,
   Eye,
-  Calendar,
   Store,
   DollarSign,
   TrendingUp,
   Package,
-  Layers,
   RotateCcw,
   X,
   FileText,
@@ -23,8 +21,7 @@ import {
   ChevronDown,
   CheckCircle2,
   Building2,
-  Users,
-  Percent,
+  Layers,
 } from 'lucide-react';
 
 export const AdminTransactions: React.FC = () => {
@@ -37,9 +34,9 @@ export const AdminTransactions: React.FC = () => {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Filter state
-  const [selectedUmkmId, setSelectedUmkmId] = useState<string>('all');
+  // Filter state (Program first, then UMKM)
   const [selectedProgramId, setSelectedProgramId] = useState<string>('all');
+  const [selectedUmkmId, setSelectedUmkmId] = useState<string>('all');
   const [selectedChannelId, setSelectedChannelId] = useState<string>('all');
   const [periodPreset, setPeriodPreset] = useState<string>('thisMonth');
   const [startDate, setStartDate] = useState<string>('');
@@ -54,6 +51,7 @@ export const AdminTransactions: React.FC = () => {
 
   // PDF Modal Form State
   const [pdfScope, setPdfScope] = useState<'ALL' | 'SINGLE'>('ALL');
+  const [pdfProgramId, setPdfProgramId] = useState<string>('all');
   const [pdfUmkmId, setPdfUmkmId] = useState<string>('');
   const [pdfPeriodPreset, setPdfPeriodPreset] = useState<string>('thisMonth');
   const [pdfStartDate, setPdfStartDate] = useState<string>('');
@@ -135,19 +133,72 @@ export const AdminTransactions: React.FC = () => {
     loadMasterData();
   }, []);
 
+  // Filter available UMKMs based on selectedProgramId
+  const availableUmkms = useMemo(() => {
+    if (selectedProgramId === 'all') {
+      return umkms;
+    }
+    const pid = Number(selectedProgramId);
+    return umkms.filter((u) => {
+      if (Array.isArray(u.programIds) && u.programIds.includes(pid)) return true;
+      if (u.programId === pid) return true;
+      return false;
+    });
+  }, [umkms, selectedProgramId]);
+
+  // Selected Program object
+  const selectedProgramObj = useMemo(() => {
+    if (selectedProgramId === 'all') return null;
+    return programs.find((p) => String(p.id) === selectedProgramId) || null;
+  }, [programs, selectedProgramId]);
+
+  // Available UMKMs for PDF Modal
+  const pdfAvailableUmkms = useMemo(() => {
+    if (pdfProgramId === 'all') {
+      return umkms;
+    }
+    const pid = Number(pdfProgramId);
+    return umkms.filter((u) => {
+      if (Array.isArray(u.programIds) && u.programIds.includes(pid)) return true;
+      if (u.programId === pid) return true;
+      return false;
+    });
+  }, [umkms, pdfProgramId]);
+
+  // Handle Program Filter change with smart auto-sync of selected UMKM
+  const handleProgramChange = (newProgId: string) => {
+    setSelectedProgramId(newProgId);
+    if (newProgId !== 'all') {
+      const pid = Number(newProgId);
+      // Check if current selectedUmkmId is in this program's UMKMs
+      if (selectedUmkmId !== 'all') {
+        const isStillValid = umkms.some((u) => {
+          if (String(u.id) !== selectedUmkmId) return false;
+          if (Array.isArray(u.programIds) && u.programIds.includes(pid)) return true;
+          if (u.programId === pid) return true;
+          return false;
+        });
+        if (!isStillValid) {
+          // Reset to 'all' so it shows all UMKMs in this newly chosen program
+          setSelectedUmkmId('all');
+        }
+      }
+    }
+  };
+
   // Load Sales Data whenever filters change
   const loadSales = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      if (selectedProgramId !== 'all') {
+        params.append('programId', selectedProgramId);
+      }
       if (selectedUmkmId !== 'all') {
         params.append('umkmId', selectedUmkmId);
       }
       if (selectedChannelId !== 'all') {
         params.append('channelId', selectedChannelId);
-      }
-      if (selectedProgramId !== 'all') {
-        params.append('programId', selectedProgramId);
       }
       if (startDate) {
         params.append('startDate', startDate);
@@ -175,7 +226,7 @@ export const AdminTransactions: React.FC = () => {
 
   useEffect(() => {
     loadSales();
-  }, [selectedUmkmId, selectedProgramId, selectedChannelId, startDate, endDate]);
+  }, [selectedProgramId, selectedUmkmId, selectedChannelId, startDate, endDate]);
 
   // Handle Preset Changes for main view
   const handlePresetChange = (preset: string) => {
@@ -254,8 +305,8 @@ export const AdminTransactions: React.FC = () => {
 
   // Reset all filters
   const handleResetFilters = () => {
-    setSelectedUmkmId('all');
     setSelectedProgramId('all');
+    setSelectedUmkmId('all');
     setSelectedChannelId('all');
     setSearch('');
     const dates = getDateRangeForPreset('thisMonth');
@@ -276,6 +327,13 @@ export const AdminTransactions: React.FC = () => {
       const isSingle = selectedUmkmId !== 'all';
       const umkmTarget = isSingle ? umkms.find((u) => String(u.id) === selectedUmkmId) : null;
 
+      let targetTitle = 'Konsolidasi Seluruh UMKM (Semua Program)';
+      if (isSingle) {
+        targetTitle = umkmTarget?.businessName || `UMKM #${selectedUmkmId}`;
+      } else if (selectedProgramId !== 'all') {
+        targetTitle = `Konsolidasi UMKM — ${selectedProgramObj?.name || 'Program Pendampingan'}`;
+      }
+
       const periodLabel =
         startDate && endDate
           ? `${formatDate(startDate)} s/d ${formatDate(endDate)}`
@@ -287,7 +345,7 @@ export const AdminTransactions: React.FC = () => {
 
       const filename = exportTransactionsReportPDF({
         scope: isSingle ? 'SINGLE' : 'ALL',
-        targetName: isSingle ? umkmTarget?.businessName || `UMKM #${selectedUmkmId}` : 'Konsolidasi Seluruh UMKM',
+        targetName: targetTitle,
         ownerName: umkmTarget?.ownerName,
         businessSector: umkmTarget?.businessSector,
         cityRegency: umkmTarget?.cityRegency,
@@ -310,8 +368,10 @@ export const AdminTransactions: React.FC = () => {
   const handleGeneratePdfFromModal = async () => {
     setExportingPdf(true);
     try {
-      // Fetch target sales specifically for this export
       const params = new URLSearchParams();
+      if (pdfProgramId !== 'all') {
+        params.append('programId', pdfProgramId);
+      }
       if (pdfScope === 'SINGLE' && pdfUmkmId) {
         params.append('umkmId', pdfUmkmId);
       }
@@ -336,6 +396,14 @@ export const AdminTransactions: React.FC = () => {
 
       const isSingle = pdfScope === 'SINGLE' && Boolean(pdfUmkmId);
       const targetUmkm = isSingle ? umkms.find((u) => String(u.id) === pdfUmkmId) : null;
+      const targetProg = pdfProgramId !== 'all' ? programs.find((p) => String(p.id) === pdfProgramId) : null;
+
+      let targetTitle = 'Konsolidasi Seluruh UMKM (Semua Program)';
+      if (isSingle) {
+        targetTitle = targetUmkm?.businessName || `UMKM #${pdfUmkmId}`;
+      } else if (pdfProgramId !== 'all') {
+        targetTitle = `Konsolidasi UMKM — ${targetProg?.name || 'Program Pendampingan'}`;
+      }
 
       const periodLabel =
         pdfStartDate && pdfEndDate
@@ -348,7 +416,7 @@ export const AdminTransactions: React.FC = () => {
 
       const filename = exportTransactionsReportPDF({
         scope: isSingle ? 'SINGLE' : 'ALL',
-        targetName: isSingle ? targetUmkm?.businessName || `UMKM #${pdfUmkmId}` : 'Konsolidasi Seluruh UMKM',
+        targetName: targetTitle,
         ownerName: targetUmkm?.ownerName,
         businessSector: targetUmkm?.businessSector,
         cityRegency: targetUmkm?.cityRegency,
@@ -407,7 +475,7 @@ export const AdminTransactions: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Monitoring seluruh transaksi penjualan UMKM, analisis detail nota/invoice, dan cetak laporan PDF resmi per UMKM maupun konsolidasi seluruh UMKM.
+            Monitoring seluruh transaksi penjualan UMKM, analisis detail nota/invoice, dan cetak laporan PDF resmi per program, per UMKM, maupun konsolidasi seluruh UMKM.
           </p>
         </div>
 
@@ -426,6 +494,7 @@ export const AdminTransactions: React.FC = () => {
           {/* Full PDF Report Generator Modal */}
           <button
             onClick={() => {
+              setPdfProgramId(selectedProgramId);
               if (selectedUmkmId !== 'all') {
                 setPdfScope('SINGLE');
                 setPdfUmkmId(selectedUmkmId);
@@ -452,30 +521,30 @@ export const AdminTransactions: React.FC = () => {
           </div>
           <button
             onClick={handleResetFilters}
-            className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+            className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
           >
             <RotateCcw className="h-3 w-3" />
             <span>Reset Filter</span>
           </button>
         </div>
 
-        {/* Filter Grid */}
+        {/* Filter Grid: Program Pendampingan FIRST, then Sasaran UMKM */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {/* 1. Target UMKM */}
+          {/* 1. Program Pendampingan (Placed first) */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              Sasaran UMKM
+            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+              Program Pendampingan
             </label>
             <div className="relative">
               <select
-                value={selectedUmkmId}
-                onChange={(e) => setSelectedUmkmId(e.target.value)}
+                value={selectedProgramId}
+                onChange={(e) => handleProgramChange(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 cursor-pointer"
               >
-                <option value="all">Semua UMKM (Konsolidasi Keseluruhan)</option>
-                {umkms.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.businessName} ({u.ownerName})
+                <option value="all">Semua Program Pendampingan</option>
+                {programs.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.batch ? `(Batch ${p.batch})` : ''}
                   </option>
                 ))}
               </select>
@@ -483,23 +552,40 @@ export const AdminTransactions: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. Program Pendampingan */}
+          {/* 2. Sasaran UMKM (Placed second, dynamically filtered based on chosen Program) */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              Program Pendampingan
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-semibold text-slate-700">
+                Sasaran UMKM
+              </label>
+              {selectedProgramId !== 'all' && (
+                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                  {availableUmkms.length} UMKM Terdaftar
+                </span>
+              )}
+            </div>
             <div className="relative">
               <select
-                value={selectedProgramId}
-                onChange={(e) => setSelectedProgramId(e.target.value)}
+                value={selectedUmkmId}
+                onChange={(e) => setSelectedUmkmId(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none pr-8 cursor-pointer"
               >
-                <option value="all">Semua Program Pendampingan</option>
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
+                {selectedProgramId === 'all' ? (
+                  <option value="all">Semua UMKM (Konsolidasi Keseluruhan)</option>
+                ) : (
+                  <option value="all">
+                    Semua UMKM dalam Program Ini ({selectedProgramObj?.name || 'Program Terpilih'})
                   </option>
-                ))}
+                )}
+                {availableUmkms.length === 0 && selectedProgramId !== 'all' ? (
+                  <option disabled value="">(Tidak ada UMKM terdaftar di program ini)</option>
+                ) : (
+                  availableUmkms.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.businessName} ({u.ownerName})
+                    </option>
+                  ))
+                )}
               </select>
               <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 pointer-events-none text-slate-400" />
             </div>
@@ -507,7 +593,7 @@ export const AdminTransactions: React.FC = () => {
 
           {/* 3. Saluran Penjualan */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
               Saluran Penjualan (Channel)
             </label>
             <div className="relative">
@@ -529,7 +615,7 @@ export const AdminTransactions: React.FC = () => {
 
           {/* 4. Pencarian Cepat */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
               Cari Transaksi / Nota
             </label>
             <div className="relative">
@@ -660,9 +746,11 @@ export const AdminTransactions: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              {selectedUmkmId !== 'all'
+              {selectedProgramId !== 'all' && selectedUmkmId === 'all'
+                ? `Menampilkan transaksi semua UMKM pada program "${selectedProgramObj?.name || 'Program Terpilih'}" (${availableUmkms.length} UMKM terdaftar)`
+                : selectedUmkmId !== 'all'
                 ? `Menampilkan transaksi untuk ${umkms.find((u) => String(u.id) === selectedUmkmId)?.businessName || 'UMKM Terpilih'}`
-                : 'Menampilkan transaksi konsolidasi seluruh UMKM'}
+                : 'Menampilkan transaksi konsolidasi seluruh UMKM pada seluruh program'}
             </p>
           </div>
 
@@ -683,11 +771,11 @@ export const AdminTransactions: React.FC = () => {
               <Receipt className="h-10 w-10 text-slate-300 stroke-1" />
               <p className="mt-3 text-sm font-bold text-slate-700">Tidak ada transaksi ditemukan</p>
               <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                Tidak ada transaksi yang cocok dengan kriteria filter atau periode yang dipilih. Silakan sesuaikan tanggal atau pilihan UMKM.
+                Tidak ada transaksi yang cocok dengan kriteria filter atau periode yang dipilih. Silakan sesuaikan pilihan program, sasaran UMKM, atau rentang tanggal.
               </p>
               <button
                 onClick={handleResetFilters}
-                className="mt-4 rounded-lg bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                className="mt-4 rounded-lg bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 cursor-pointer"
               >
                 Reset Semua Filter
               </button>
@@ -748,7 +836,7 @@ export const AdminTransactions: React.FC = () => {
                         </p>
                         {sale.items && (
                           <span className="text-[10px] text-slate-400">
-                            {sale.items.length} varian produk
+                            {sale.items.length} jenis item
                           </span>
                         )}
                       </td>
@@ -759,37 +847,38 @@ export const AdminTransactions: React.FC = () => {
                       </td>
 
                       {/* HPP */}
-                      <td className="py-3 px-4 text-right text-slate-500 font-medium">
+                      <td className="py-3 px-4 text-right text-slate-600">
                         {formatCurrency(sale.totalHpp)}
                       </td>
 
-                      {/* Profit & Margin */}
+                      {/* Laba Kotor & Margin */}
                       <td className="py-3 px-4 text-right">
-                        <div className="font-bold text-emerald-700">
+                        <div className="font-bold text-emerald-600">
                           {formatCurrency(sale.grossProfit)}
                         </div>
-                        <span
-                          className={`inline-block text-[10px] font-bold ${
-                            margin >= 30
-                              ? 'text-emerald-600'
-                              : margin >= 15
-                              ? 'text-amber-600'
-                              : 'text-rose-600'
-                          }`}
-                        >
-                          {formatPercent(margin)}
-                        </span>
+                        <div className="text-[10px] text-slate-400">
+                          Margin: {formatPercent(margin)}
+                        </div>
                       </td>
 
-                      {/* Action */}
+                      {/* Action buttons */}
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleOpenSaleDetail(sale)}
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Eye className="h-3 w-3" />
-                          <span>Detail</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenSaleDetail(sale)}
+                            title="Lihat Detail Lengkap Transaksi"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => exportSingleTransactionPDF(sale, sale.businessName || 'UMKM')}
+                            title="Cetak Struk Nota Transaksi PDF"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-emerald-600 transition-colors cursor-pointer"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -800,196 +889,155 @@ export const AdminTransactions: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL 1: Detail Nota Transaksi */}
+      {/* MODAL 1: Detail Transaksi Penjualan Single */}
       {selectedSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs overflow-y-auto">
           <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 my-8">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                  <Receipt className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Detail Nota Transaksi INV-{String(selectedSale.id).padStart(5, '0')}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Dicatat pada {formatDate(selectedSale.transactionDate)}
-                  </p>
-                </div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                  Detail Transaksi Penjualan
+                </span>
+                <h3 className="text-lg font-bold text-slate-900">
+                  INV-{String(selectedSale.id).padStart(5, '0')}
+                </h3>
               </div>
               <button
                 onClick={() => setSelectedSale(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* UMKM Profile Banner */}
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-2">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Profil Pelaku Usaha
+            {/* Info Grid */}
+            <div className="grid grid-cols-2 gap-4 rounded-xl bg-slate-50 p-4 text-xs sm:grid-cols-4">
+              <div>
+                <span className="text-slate-500">Unit Usaha:</span>
+                <p className="font-bold text-slate-900">{selectedSale.businessName || `UMKM #${selectedSale.umkmId}`}</p>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    {selectedSale.businessName || `UMKM #${selectedSale.umkmId}`}
-                  </h4>
-                  <p className="text-xs text-slate-600">
-                    Pemilik: <span className="font-semibold">{selectedSale.ownerName || '-'}</span> • Sektor: {selectedSale.businessSector || 'Kuliner / F&B'}
-                  </p>
-                  {selectedSale.cityRegency && (
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Lokasi: {selectedSale.cityRegency} {selectedSale.address ? `(${selectedSale.address})` : ''}
-                    </p>
-                  )}
-                </div>
-                <div className="text-right text-xs">
-                  <span className="inline-block rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
-                    Status: Sukses
-                  </span>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Channel: <span className="font-semibold text-slate-800">{selectedSale.channelName || 'Toko Fisik'}</span>
-                  </p>
-                </div>
+              <div>
+                <span className="text-slate-500">Tanggal:</span>
+                <p className="font-bold text-slate-900">{formatDate(selectedSale.transactionDate)}</p>
+              </div>
+              <div>
+                <span className="text-slate-500">Saluran:</span>
+                <p className="font-bold text-slate-900">{selectedSale.channelName || 'Toko Fisik'}</p>
+              </div>
+              <div>
+                <span className="text-slate-500">Pelanggan:</span>
+                <p className="font-bold text-slate-900">{selectedSale.customerName || 'Umum'}</p>
               </div>
             </div>
 
-            {/* Customer & Notes Info */}
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="rounded-lg border border-slate-100 p-3">
-                <span className="text-[11px] text-slate-400 block font-medium">Nama Pelanggan</span>
-                <span className="font-bold text-slate-800 mt-0.5 block">
-                  {selectedSale.customerName || 'Pelanggan Umum (Walk-in)'}
-                </span>
-              </div>
-              <div className="rounded-lg border border-slate-100 p-3">
-                <span className="text-[11px] text-slate-400 block font-medium">Catatan Khusus</span>
-                <span className="font-medium text-slate-700 mt-0.5 block">
-                  {selectedSale.notes || '-'}
-                </span>
-              </div>
-            </div>
-
-            {/* Items Breakdown Table */}
+            {/* Items Table */}
             <div>
-              <h5 className="text-xs font-bold text-slate-800 mb-2">Rincian Item Produk & HPP Snapshot</h5>
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <h4 className="text-xs font-bold text-slate-800 mb-2">Daftar Item Terjual & Snapshot Biaya</h4>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600 border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3">Produk</th>
-                      <th className="py-2.5 px-3 text-center">Qty</th>
-                      <th className="py-2.5 px-3 text-right">Harga Jual</th>
-                      <th className="py-2.5 px-3 text-right">HPP Satuan</th>
-                      <th className="py-2.5 px-3 text-right">Subtotal</th>
-                      <th className="py-2.5 px-3 text-right">Laba Kotor</th>
+                      <th className="py-2 px-3">Produk</th>
+                      <th className="py-2 px-3 text-center">Qty</th>
+                      <th className="py-2 px-3 text-right">Harga Jual</th>
+                      <th className="py-2 px-3 text-right">HPP Snapshot</th>
+                      <th className="py-2 px-3 text-right">Subtotal Omzet</th>
+                      <th className="py-2 px-3 text-right">Laba Kotor</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {selectedSale.items && selectedSale.items.length > 0 ? (
                       selectedSale.items.map((it, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3 font-semibold text-slate-900">{it.productNameSnapshot}</td>
-                          <td className="py-2 px-3 text-center text-slate-700">{it.quantity}</td>
-                          <td className="py-2 px-3 text-right text-slate-700">{formatCurrency(it.sellingPrice)}</td>
-                          <td className="py-2 px-3 text-right text-slate-500">{formatCurrency(it.hppSnapshot)}</td>
-                          <td className="py-2 px-3 text-right font-bold text-slate-900">{formatCurrency(it.subtotal)}</td>
-                          <td className="py-2 px-3 text-right font-bold text-emerald-600">{formatCurrency(it.grossProfit)}</td>
+                        <tr key={idx}>
+                          <td className="py-2 px-3 font-medium text-slate-900">
+                            {it.productNameSnapshot}
+                          </td>
+                          <td className="py-2 px-3 text-center text-slate-700">
+                            {it.quantity}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-700">
+                            {formatCurrency(it.sellingPrice)}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-500">
+                            {formatCurrency(it.hppSnapshot)}
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">
+                            {formatCurrency(it.subtotal)}
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-emerald-600">
+                            {formatCurrency(it.grossProfit)}
+                          </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td colSpan={6} className="py-4 text-center text-slate-400">
-                          Tidak ada rincian item
+                          Tidak ada rincian item.
                         </td>
                       </tr>
                     )}
                   </tbody>
-                  <tfoot className="bg-slate-50 font-bold text-xs border-t border-slate-200">
-                    <tr>
-                      <td colSpan={4} className="py-2.5 px-3 text-slate-800">Subtotal Produk</td>
-                      <td className="py-2.5 px-3 text-right text-slate-900">{formatCurrency(selectedSale.subtotal || selectedSale.totalRevenue)}</td>
-                      <td className="py-2.5 px-3 text-right text-emerald-700">{formatCurrency(selectedSale.grossProfit)}</td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </div>
 
-            {/* Fees & Discounts breakdown */}
-            {(selectedSale.discountAmount || selectedSale.shippingFee || selectedSale.taxAmount || selectedSale.otherFee) ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5">
+            {/* Financial Calculation Summary */}
+            <div className="rounded-xl border border-slate-200 p-4 space-y-2 text-xs bg-slate-50/50">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal Penjualan Produk:</span>
+                <span className="font-semibold text-slate-900">{formatCurrency(selectedSale.subtotal)}</span>
+              </div>
+              {(selectedSale.discountAmount || 0) > 0 && (
+                <div className="flex justify-between text-rose-600">
+                  <span>Diskon Penjualan ({selectedSale.discountType}):</span>
+                  <span>- {formatCurrency(selectedSale.discountAmount || 0)}</span>
+                </div>
+              )}
+              {(selectedSale.shippingFee || 0) > 0 && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Subtotal Produk:</span>
-                  <span className="font-semibold">{formatCurrency(selectedSale.subtotal || selectedSale.totalRevenue)}</span>
+                  <span>Ongkos Kirim:</span>
+                  <span>+ {formatCurrency(selectedSale.shippingFee || 0)}</span>
                 </div>
-                {selectedSale.discountAmount ? (
-                  <div className="flex justify-between text-rose-600">
-                    <span>Diskon / Potongan Harga (-):</span>
-                    <span className="font-semibold">-{formatCurrency(selectedSale.discountAmount)}</span>
-                  </div>
-                ) : null}
-                {selectedSale.shippingFee ? (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Ongkos Kirim (+):</span>
-                    <span className="font-semibold">+{formatCurrency(selectedSale.shippingFee)}</span>
-                  </div>
-                ) : null}
-                {selectedSale.taxAmount ? (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Pajak ({selectedSale.taxType === 'PERCENTAGE' ? `${selectedSale.taxValue}%` : 'Nominal'}):</span>
-                    <span className="font-semibold">+{formatCurrency(selectedSale.taxAmount)}</span>
-                  </div>
-                ) : null}
-                {selectedSale.otherFee ? (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Biaya Lain-lain (+):</span>
-                    <span className="font-semibold">+{formatCurrency(selectedSale.otherFee)}</span>
-                  </div>
-                ) : null}
-                <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-slate-900">
-                  <span>Total Tagihan Akhir:</span>
-                  <span className="text-emerald-700">{formatCurrency(selectedSale.totalRevenue)}</span>
+              )}
+              {(selectedSale.taxAmount || 0) > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <span>Pajak ({selectedSale.taxType}):</span>
+                  <span>+ {formatCurrency(selectedSale.taxAmount || 0)}</span>
                 </div>
+              )}
+              <div className="border-t border-slate-200 pt-2 flex justify-between text-sm font-bold">
+                <span className="text-slate-900">Total Nilai Bersih (Total Omzet):</span>
+                <span className="text-indigo-600">{formatCurrency(selectedSale.totalRevenue)}</span>
               </div>
-            ) : null}
-
-            {/* Financial Summary Box */}
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 flex items-center justify-between text-xs">
-              <div>
-                <span className="text-slate-500">Margin Laba Kotor: </span>
-                <span className="font-bold text-indigo-700">
-                  {selectedSale.totalRevenue > 0
-                    ? formatPercent((selectedSale.grossProfit / selectedSale.totalRevenue) * 100)
-                    : '0%'}
-                </span>
+              <div className="flex justify-between text-xs text-slate-500 pt-1">
+                <span>Total HPP Produk:</span>
+                <span>{formatCurrency(selectedSale.totalHpp)}</span>
               </div>
-              <div>
-                <span className="text-slate-500">Total HPP: </span>
-                <span className="font-bold text-slate-700">{formatCurrency(selectedSale.totalHpp)}</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Total Omzet: </span>
-                <span className="font-extrabold text-slate-900">{formatCurrency(selectedSale.totalRevenue)}</span>
+              <div className="flex justify-between text-xs font-bold text-emerald-700 bg-emerald-50 p-2 rounded-lg mt-1">
+                <span>Total Laba Kotor Faktual (Gross Profit):</span>
+                <span>{formatCurrency(selectedSale.grossProfit)} ({formatPercent(selectedSale.totalRevenue > 0 ? (selectedSale.grossProfit / selectedSale.totalRevenue) * 100 : 0)})</span>
               </div>
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-2">
+            {selectedSale.notes && (
+              <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 border border-amber-200">
+                <span className="font-bold">Catatan Transaksi: </span>
+                {selectedSale.notes}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
-                onClick={() => exportSingleTransactionPDF(selectedSale)}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                onClick={() => exportSingleTransactionPDF(selectedSale, selectedSale.businessName || 'UMKM')}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 cursor-pointer shadow-sm transition-all"
               >
-                <Printer className="h-4 w-4 text-slate-500" />
+                <Printer className="h-4 w-4" />
                 <span>Cetak Nota PDF</span>
               </button>
-
               <button
                 onClick={() => setSelectedSale(null)}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Tutup
               </button>
@@ -1025,10 +1073,46 @@ export const AdminTransactions: React.FC = () => {
               </button>
             </div>
 
+            {/* Program Selection in PDF Modal */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-800">
+                1. Program Pendampingan
+              </label>
+              <div className="relative">
+                <select
+                  value={pdfProgramId}
+                  onChange={(e) => {
+                    const newProgId = e.target.value;
+                    setPdfProgramId(newProgId);
+                    if (newProgId !== 'all') {
+                      const pid = Number(newProgId);
+                      const validUmkms = umkms.filter(
+                        (u) =>
+                          (Array.isArray(u.programIds) && u.programIds.includes(pid)) ||
+                          u.programId === pid
+                      );
+                      if (pdfUmkmId && !validUmkms.some((u) => String(u.id) === pdfUmkmId)) {
+                        setPdfUmkmId(validUmkms[0] ? String(validUmkms[0].id) : '');
+                      }
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Semua Program Pendampingan</option>
+                  {programs.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.batch ? `(Batch ${p.batch})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 pointer-events-none text-slate-400" />
+              </div>
+            </div>
+
             {/* Scope Selection */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-800">
-                1. Sasaran Laporan Transaksi
+                2. Sasaran Dokumen Laporan
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -1036,16 +1120,22 @@ export const AdminTransactions: React.FC = () => {
                   onClick={() => setPdfScope('ALL')}
                   className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all cursor-pointer ${
                     pdfScope === 'ALL'
-                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold'
+                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold ring-1 ring-indigo-500'
                       : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 text-xs font-bold">
                     <Building2 className="h-4 w-4 text-indigo-600" />
-                    <span>Konsolidasi Seluruh UMKM</span>
+                    <span>
+                      {pdfProgramId === 'all'
+                        ? 'Konsolidasi Seluruh UMKM'
+                        : 'Konsolidasi Semua UMKM di Program'}
+                    </span>
                   </div>
                   <p className="mt-1 text-[11px] font-normal text-slate-500">
-                    Mencakup akumulasi data seluruh UMKM dampingan program.
+                    {pdfProgramId === 'all'
+                      ? 'Akumulasi seluruh transaksi UMKM di semua program.'
+                      : `Akumulasi data ${pdfAvailableUmkms.length} UMKM pada program terpilih.`}
                   </p>
                 </button>
 
@@ -1053,13 +1143,13 @@ export const AdminTransactions: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setPdfScope('SINGLE');
-                    if (!pdfUmkmId && umkms.length > 0) {
-                      setPdfUmkmId(String(umkms[0].id));
+                    if (!pdfUmkmId && pdfAvailableUmkms.length > 0) {
+                      setPdfUmkmId(String(pdfAvailableUmkms[0].id));
                     }
                   }}
                   className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all cursor-pointer ${
                     pdfScope === 'SINGLE'
-                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold'
+                      ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold ring-1 ring-indigo-500'
                       : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1068,7 +1158,7 @@ export const AdminTransactions: React.FC = () => {
                     <span>Satu UMKM Spesifik</span>
                   </div>
                   <p className="mt-1 text-[11px] font-normal text-slate-500">
-                    Laporan kinerja eksklusif per satu unit usaha UMKM.
+                    Laporan kinerja eksklusif per satu unit usaha UMKM terpilih.
                   </p>
                 </button>
               </div>
@@ -1077,18 +1167,22 @@ export const AdminTransactions: React.FC = () => {
               {pdfScope === 'SINGLE' && (
                 <div className="mt-3 animate-in fade-in">
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Pilih Unit Usaha UMKM:
+                    Pilih Unit Usaha UMKM {pdfProgramId !== 'all' ? '(Sesuai Program)' : ''}:
                   </label>
                   <select
                     value={pdfUmkmId}
                     onChange={(e) => setPdfUmkmId(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
                   >
-                    {umkms.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.businessName} — {u.ownerName} ({u.cityRegency || 'Jawa Barat'})
-                      </option>
-                    ))}
+                    {pdfAvailableUmkms.length === 0 ? (
+                      <option disabled value="">(Tidak ada UMKM di program ini)</option>
+                    ) : (
+                      pdfAvailableUmkms.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.businessName} — {u.ownerName} ({u.cityRegency || 'Jawa Barat'})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               )}
@@ -1097,7 +1191,7 @@ export const AdminTransactions: React.FC = () => {
             {/* Period Selection */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-800">
-                2. Pilihan Periode Laporan
+                3. Pilihan Periode Laporan
               </label>
 
               <div className="flex flex-wrap gap-1.5">
@@ -1162,7 +1256,7 @@ export const AdminTransactions: React.FC = () => {
             {/* Document Signature Settings */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-800">
-                3. Pejabat Pengesah Dokumen (Tanda Tangan)
+                4. Pejabat Pengesah Dokumen (Tanda Tangan)
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>

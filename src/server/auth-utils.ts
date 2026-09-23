@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 
 // Secret key for HMAC token signing (falls back to persistent app secret if env not set)
 const HMAC_SECRET = process.env.SESSION_SECRET || 'banua_mentor_secure_session_secret_2026_salt_998877';
