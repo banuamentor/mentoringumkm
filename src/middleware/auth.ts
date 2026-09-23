@@ -4,6 +4,7 @@ import { DecodedIdToken } from 'firebase-admin/auth';
 import { db } from '../db/index.ts';
 import { profiles, umkmProfiles, mentorProfiles } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
+import { verifySignedSessionToken } from '../server/auth-utils.ts';
 
 export interface AuthRequest extends Request {
   user?: DecodedIdToken;
@@ -22,23 +23,32 @@ export const requireAuth = async (
     return res.status(401).json({ error: 'Sesi tidak valid: Token otorisasi tidak ditemukan.' });
   }
 
-  const token = authHeader.split('Bearer ')[1];
-  try {
-    let decodedToken: DecodedIdToken;
+  const token = authHeader.split('Bearer ')[1]?.trim();
+  if (!token) {
+    return res.status(401).json({ error: 'Sesi tidak valid: Token kosong.' });
+  }
 
-    // Check if session token (email/password login or demo role switch)
-    if (token.startsWith('auth-token-') || token.startsWith('demo-token-')) {
-      const email = decodeURIComponent(token.replace(/^auth-token-|^demo-token-/, ''));
-      const existingUser = await db.select().from(profiles).where(eq(profiles.email, email)).limit(1);
+  try {
+    // 1. Check Signed Session Token or backward-compatible auth-token
+    const sessionResult = verifySignedSessionToken(token);
+    if (sessionResult.valid && sessionResult.email) {
+      const existingUser = await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.email, sessionResult.email))
+        .limit(1);
+
       if (existingUser.length > 0) {
-        if (existingUser[0].accountStatus === 'SUSPENDED') {
+        const user = existingUser[0];
+
+        if (user.accountStatus === 'SUSPENDED' || user.accountStatus === 'INACTIVE') {
           return res.status(403).json({ error: 'Akun Anda telah dinonaktifkan oleh administrator.' });
         }
 
-        req.profile = existingUser[0];
+        req.profile = user;
         req.user = {
-          uid: existingUser[0].firebaseUid,
-          email: existingUser[0].email,
+          uid: user.firebaseUid,
+          email: user.email,
         } as DecodedIdToken;
 
         if (req.profile.role === 'UMKM') {
@@ -50,12 +60,15 @@ export const requireAuth = async (
         }
         return next();
       }
+    } else if (sessionResult.expired) {
+      return res.status(401).json({ error: 'Sesi login telah kedaluwarsa. Silakan masuk kembali.' });
     }
 
+    // 2. Fallback to Firebase ID Token verification
+    let decodedToken: DecodedIdToken;
     try {
       decodedToken = await adminAuth.verifyIdToken(token);
-    } catch (e: any) {
-      // In local dev without emulator or if token is special demo, handle gracefully
+    } catch {
       return res.status(401).json({ error: 'Sesi telah kedaluwarsa atau token tidak valid. Silakan login kembali.' });
     }
 
@@ -69,22 +82,21 @@ export const requireAuth = async (
       .limit(1);
 
     if (userProfiles.length === 0 && decodedToken.email) {
-      // Try by email
       userProfiles = await db
         .select()
         .from(profiles)
-        .where(eq(profiles.email, decodedToken.email))
+        .where(eq(profiles.email, decodedToken.email.toLowerCase().trim()))
         .limit(1);
     }
 
     if (userProfiles.length === 0) {
-      // Auto-create profile if first login
+      // Auto-create profile on first Google Auth login
       const defaultRole = (decodedToken.email === 'banuamentor@gmail.com') ? 'ADMIN' : 'UMKM';
       const inserted = await db
         .insert(profiles)
         .values({
           firebaseUid: decodedToken.uid,
-          email: decodedToken.email || `user-${decodedToken.uid}@app.local`,
+          email: decodedToken.email?.toLowerCase().trim() || `user-${decodedToken.uid}@app.local`,
           fullName: decodedToken.name || decodedToken.email?.split('@')[0] || 'User UMKM',
           role: defaultRole,
           accountStatus: 'ACTIVE',
@@ -107,7 +119,6 @@ export const requireAuth = async (
       }
     } else {
       req.profile = userProfiles[0];
-      // Attach UMKM or Mentor profile
       if (req.profile.role === 'UMKM') {
         let u = await db.select().from(umkmProfiles).where(eq(umkmProfiles.profileId, req.profile.id)).limit(1);
         if (u.length === 0) {
@@ -142,7 +153,7 @@ export const requireAuth = async (
 
     next();
   } catch (error) {
-    console.error('Error verifying Firebase ID token:', error);
+    console.error('Error verifying auth token:', error);
     return res.status(401).json({ error: 'Terjadi kesalahan saat memverifikasi sesi pengguna.' });
   }
 };

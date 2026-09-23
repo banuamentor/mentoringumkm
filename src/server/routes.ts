@@ -21,16 +21,41 @@ import { eq, and, desc, sql, gte, lte, isNull, inArray } from 'drizzle-orm';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.ts';
 import { logAudit } from './audit.ts';
 import crypto from 'crypto';
-import { hashPassword, verifyPassword, generateSecureToken } from './auth-utils.ts';
+import {
+  hashPassword,
+  verifyPassword,
+  generateSecureToken,
+  generateSignedSessionToken,
+  createRateLimiter,
+} from './auth-utils.ts';
 
 export const apiRouter = Router();
+
+// Rate limiters for security protection against brute force and request flooding
+const loginRateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 20, // 20 attempts
+  message: 'Terlalu banyak percobaan masuk. Silakan tunggu 10 menit sebelum mencoba lagi.',
+});
+
+const registerRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: 'Terlalu banyak pendaftaran akun dari perangkat Anda. Silakan coba lagi nanti.',
+});
+
+const resetRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: 'Batas permintaan pemulihan password tercapai. Silakan tunggu beberapa menit.',
+});
 
 // ==========================================
 // 1. AUTH & PROFILE ROUTES
 // ==========================================
 
 // Email and Password Login
-apiRouter.post('/auth/login', async (req, res) => {
+apiRouter.post('/auth/login', loginRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -76,8 +101,10 @@ apiRouter.post('/auth/login', async (req, res) => {
 
     await logAudit(user.id, 'LOGIN', 'profiles', user.id, { role: user.role, email: user.email });
 
+    const sessionToken = generateSignedSessionToken(user.id, user.email);
+
     res.json({
-      token: `auth-token-${encodeURIComponent(user.email)}`,
+      token: sessionToken,
       profile: user,
       umkm,
       mentor,
@@ -89,7 +116,7 @@ apiRouter.post('/auth/login', async (req, res) => {
 });
 
 // UMKM Self-Registration (Only for UMKM)
-apiRouter.post('/auth/register-umkm', async (req, res) => {
+apiRouter.post('/auth/register-umkm', registerRateLimiter, async (req, res) => {
   try {
     const { fullName, businessName, email, whatsapp, password } = req.body;
     if (!fullName || !businessName || !email || !password) {
@@ -147,9 +174,11 @@ apiRouter.post('/auth/register-umkm', async (req, res) => {
 
     await logAudit(newProfile.id, 'REGISTER_UMKM', 'umkm_profiles', insertedUmkm[0].id);
 
+    const sessionToken = generateSignedSessionToken(newProfile.id, newProfile.email);
+
     res.json({
       message: 'Pendaftaran UMKM berhasil! Selamat datang di sistem pendampingan bisnis.',
-      token: `auth-token-${encodeURIComponent(newProfile.email)}`,
+      token: sessionToken,
       profile: newProfile,
       umkm: insertedUmkm[0],
       mentor: null,
@@ -161,7 +190,7 @@ apiRouter.post('/auth/register-umkm', async (req, res) => {
 });
 
 // Forgot Password Request
-apiRouter.post('/auth/forgot-password', async (req, res) => {
+apiRouter.post('/auth/forgot-password', resetRateLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -241,7 +270,7 @@ apiRouter.get('/auth/verify-reset-token', async (req, res) => {
 });
 
 // Reset Password
-apiRouter.post('/auth/reset-password', async (req, res) => {
+apiRouter.post('/auth/reset-password', resetRateLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
@@ -3383,6 +3412,8 @@ apiRouter.post('/admin/invite-mentor', requireAuth, requireRole(['ADMIN']), asyn
 // Audit Logs list
 const getAuditLogs = async (req: AuthRequest, res: Response) => {
   try {
+    const limitQuery = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+
     const list = await db
       .select({
         id: auditLogs.id,
@@ -3401,7 +3432,7 @@ const getAuditLogs = async (req: AuthRequest, res: Response) => {
       .from(auditLogs)
       .leftJoin(profiles, eq(auditLogs.actorProfileId, profiles.id))
       .orderBy(desc(auditLogs.createdAt))
-      .limit(100);
+      .limit(limitQuery);
 
     res.json(list);
   } catch (error: any) {
