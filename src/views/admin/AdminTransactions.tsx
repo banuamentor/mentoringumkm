@@ -22,6 +22,10 @@ import {
   CheckCircle2,
   Building2,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 
 export const AdminTransactions: React.FC = () => {
@@ -48,6 +52,10 @@ export const AdminTransactions: React.FC = () => {
   const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
   const [exportingPdf, setExportingPdf] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Pagination State (Options: 10, 50, 100)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
   // PDF Modal Form State
   const [pdfScope, setPdfScope] = useState<'ALL' | 'SINGLE'>('ALL');
@@ -313,6 +321,51 @@ export const AdminTransactions: React.FC = () => {
     setPeriodPreset('thisMonth');
     setStartDate(dates.start);
     setEndDate(dates.end);
+    setCurrentPage(1);
+  };
+
+  // Pagination Calculations
+  const totalItems = filteredSales.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  // Reset to page 1 on filter/search/pageSize change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedProgramId, selectedUmkmId, selectedChannelId, startDate, endDate, search, pageSize]);
+
+  // Ensure currentPage does not exceed totalPages
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const paginatedSales = useMemo(() => {
+    return filteredSales.slice(startIndex, endIndex);
+  }, [filteredSales, startIndex, endIndex]);
+
+  // Helper to generate numbered pagination list
+  const getVisiblePageNumbers = (current: number, total: number) => {
+    if (total <= 5) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    pages.push(1);
+    if (current > 3) {
+      pages.push('...');
+    }
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    if (current < total - 2) {
+      pages.push('...');
+    }
+    pages.push(total);
+    return pages;
   };
 
   // Quick Export with current active filter
@@ -741,11 +794,11 @@ export const AdminTransactions: React.FC = () => {
               <h2 className="text-sm font-bold text-slate-900">
                 Daftar Transaksi UMKM
               </h2>
-              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
-                {formatNumber(filteredSales.length)} transaksi
+              <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+                {totalItems > 0 ? `Halaman ${currentPage} (${startIndex + 1}-${endIndex} dari ${formatNumber(totalItems)})` : '0 transaksi'}
               </span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               {selectedProgramId !== 'all' && selectedUmkmId === 'all'
                 ? `Menampilkan transaksi semua UMKM pada program "${selectedProgramObj?.name || 'Program Terpilih'}" (${availableUmkms.length} UMKM terdaftar)`
                 : selectedUmkmId !== 'all'
@@ -754,8 +807,30 @@ export const AdminTransactions: React.FC = () => {
             </p>
           </div>
 
-          <div className="text-xs font-semibold text-slate-600">
-            Total Nilai: <span className="text-indigo-600 font-bold">{formatCurrency(stats.totalRev)}</span>
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Quick Page Size Pill Selector (1-10, 1-50, 1-100) */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[11px] font-semibold text-slate-500">Per Halaman:</span>
+              <div className="flex items-center rounded-lg bg-slate-200/80 p-0.5 border border-slate-200">
+                {[10, 50, 100].map((sz) => (
+                  <button
+                    key={sz}
+                    onClick={() => setPageSize(sz)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                      pageSize === sz
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    1-{sz}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="hidden md:block text-xs font-semibold text-slate-600 border-l border-slate-200 pl-3">
+              Total Nilai: <span className="text-indigo-600 font-bold">{formatCurrency(stats.totalRev)}</span>
+            </div>
           </div>
         </div>
 
@@ -795,7 +870,7 @@ export const AdminTransactions: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSales.map((sale) => {
+                {paginatedSales.map((sale) => {
                   const margin = sale.totalRevenue > 0 ? (sale.grossProfit / sale.totalRevenue) * 100 : 0;
                   const invNumber = `INV-${String(sale.id).padStart(5, '0')}`;
                   const itemsSummary =
@@ -887,6 +962,106 @@ export const AdminTransactions: React.FC = () => {
             </table>
           )}
         </div>
+
+        {/* Pagination Footer */}
+        {!loading && filteredSales.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3 text-xs">
+            {/* Range info and page size selector */}
+            <div className="flex flex-wrap items-center gap-3 text-slate-600">
+              <span>
+                Menampilkan <strong className="font-bold text-slate-900">{totalItems === 0 ? 0 : startIndex + 1} - {endIndex}</strong> dari <strong className="font-bold text-slate-900">{formatNumber(totalItems)}</strong> transaksi
+              </span>
+              <div className="flex items-center gap-1.5 border-l border-slate-300 pl-3">
+                <span className="text-[11px] text-slate-500">Pilihan:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-500 focus:outline-none cursor-pointer"
+                >
+                  <option value={10}>1-10 (10 / halaman)</option>
+                  <option value={50}>1-50 (50 / halaman)</option>
+                  <option value={100}>1-100 (100 / halaman)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex items-center gap-1">
+              {/* First Page */}
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                title="Halaman Pertama"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </button>
+
+              {/* Previous Page */}
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                title="Halaman Sebelumnya"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Sebelumnya</span>
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1 mx-1">
+                {getVisiblePageNumbers(currentPage, totalPages).map((p, idx) => {
+                  if (p === '...') {
+                    return (
+                      <span key={`dots-${idx}`} className="px-1 text-slate-400 font-bold">
+                        ...
+                      </span>
+                    );
+                  }
+                  const pageNum = Number(p);
+                  const isActive = pageNum === currentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`h-7 w-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next Page */}
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                title="Halaman Berikutnya"
+              >
+                <span className="hidden sm:inline">Berikutnya</span>
+                <ChevronRight className="h-4 w-4" />
+              </button>
+
+              {/* Last Page */}
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                title="Halaman Terakhir"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL 1: Detail Transaksi Penjualan Single */}

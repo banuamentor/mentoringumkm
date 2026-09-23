@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   AlertCircle,
   KeyRound,
-  Sparkles,
   ExternalLink,
   Eye,
   EyeOff,
@@ -262,13 +261,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Quick helper for fill credentials
-  const fillCredentials = (em: string, pw: string) => {
-    setEmail(em);
-    setPassword(pw);
-    setErrorMessage(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
@@ -408,40 +400,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {loading ? 'Memverifikasi...' : 'Masuk Sekarang'}
                 {!loading && <ArrowRight className="h-4 w-4" />}
               </button>
-
-              {/* Quick Fill Credentials Helper */}
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[11px] font-medium text-slate-500 mb-2 flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                  Akun Uji Coba Cepat (Klik untuk Mengisi):
-                </p>
-                <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => fillCredentials('banuamentor@gmail.com', '12345678')}
-                    className="rounded-md border border-slate-200 bg-slate-50 p-1.5 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
-                  >
-                    <span className="block font-bold text-slate-900">Admin</span>
-                    <span className="block text-[10px] text-slate-500 truncate">banuamentor@...</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillCredentials('mentor.budi@umkm.id', '12345678')}
-                    className="rounded-md border border-slate-200 bg-slate-50 p-1.5 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
-                  >
-                    <span className="block font-bold text-slate-900">Mentor</span>
-                    <span className="block text-[10px] text-slate-500 truncate">mentor.budi@...</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillCredentials('kopi.nusantara@umkm.id', '12345678')}
-                    className="rounded-md border border-slate-200 bg-slate-50 p-1.5 text-left hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
-                  >
-                    <span className="block font-bold text-slate-900">UMKM</span>
-                    <span className="block text-[10px] text-slate-500 truncate">kopi.nusantara@...</span>
-                  </button>
-                </div>
-              </div>
 
               {/* Switch to Register link */}
               <div className="text-center pt-2">

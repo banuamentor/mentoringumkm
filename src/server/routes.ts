@@ -17,7 +17,7 @@ import {
   invitations,
   auditLogs,
 } from '../db/schema.ts';
-import { eq, and, desc, sql, gte, lte, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, lte, isNull, inArray, or } from 'drizzle-orm';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.ts';
 import { logAudit } from './audit.ts';
 import crypto from 'crypto';
@@ -80,8 +80,8 @@ apiRouter.post('/auth/login', loginRateLimiter, async (req, res) => {
       });
     }
 
-    if (user.accountStatus === 'SUSPENDED') {
-      return res.status(403).json({ error: 'Akun Anda telah dinonaktifkan oleh administrator.' });
+    if (user.accountStatus === 'SUSPENDED' || user.accountStatus === 'INACTIVE') {
+      return res.status(403).json({ error: 'Akun Anda sedang dinonaktifkan oleh administrator. Silakan hubungi admin untuk informasi lebih lanjut.' });
     }
 
     const isMatch = verifyPassword(String(password), user.passwordHash);
@@ -3145,7 +3145,16 @@ apiRouter.post('/admin/users/:id/status', requireAuth, requireRole(['ADMIN']), a
     const { accountStatus } = req.body;
 
     if (!['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(accountStatus)) {
-      return res.status(400).json({ error: 'Status akun tidak valid' });
+      return res.status(400).json({ error: 'Status akun tidak valid. Pilih AKTIF atau NONAKTIF.' });
+    }
+
+    if (targetProfileId === req.profile!.id && accountStatus !== 'ACTIVE') {
+      return res.status(400).json({ error: 'Anda tidak dapat menonaktifkan akun admin Anda sendiri yang sedang aktif.' });
+    }
+
+    const existingUser = await db.select().from(profiles).where(eq(profiles.id, targetProfileId)).limit(1);
+    if (existingUser.length === 0) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
     }
 
     const updated = await db
@@ -3157,11 +3166,122 @@ apiRouter.post('/admin/users/:id/status', requireAuth, requireRole(['ADMIN']), a
       .where(eq(profiles.id, targetProfileId))
       .returning();
 
-    await logAudit(req.profile!.id, 'CHANGE_USER_STATUS', 'profiles', targetProfileId, { accountStatus });
-    res.json({ message: `Status akun berhasil diubah menjadi ${accountStatus}`, profile: updated[0] });
+    const actionName = accountStatus === 'ACTIVE' ? 'ACTIVATE_USER' : 'DEACTIVATE_USER';
+    await logAudit(req.profile!.id, actionName, 'profiles', targetProfileId, {
+      accountStatus,
+      targetEmail: existingUser[0].email,
+      targetName: existingUser[0].fullName,
+    });
+
+    res.json({
+      message: `Status akun ${existingUser[0].fullName} berhasil diubah menjadi ${accountStatus === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}`,
+      profile: updated[0],
+    });
   } catch (error: any) {
     console.error('Error changing user status:', error);
-    res.status(500).json({ error: 'Gagal mengubah status akun' });
+    res.status(500).json({ error: 'Gagal mengubah status akun: ' + error.message });
+  }
+});
+
+// Admin Delete Account (Permanently remove account and all related records cleanly)
+apiRouter.delete('/admin/users/:id', requireAuth, requireRole(['ADMIN']), async (req: AuthRequest, res: Response) => {
+  try {
+    const targetProfileId = Number(req.params.id);
+    if (!targetProfileId || isNaN(targetProfileId)) {
+      return res.status(400).json({ error: 'ID pengguna tidak valid' });
+    }
+
+    if (targetProfileId === req.profile!.id) {
+      return res.status(400).json({ error: 'Anda tidak dapat menghapus akun admin Anda sendiri yang sedang aktif digunakan.' });
+    }
+
+    const targetUserList = await db.select().from(profiles).where(eq(profiles.id, targetProfileId)).limit(1);
+    if (targetUserList.length === 0) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+    }
+
+    const targetUser = targetUserList[0];
+
+    // 1. If UMKM profile exists, cascade delete related records
+    const umkmList = await db.select().from(umkmProfiles).where(eq(umkmProfiles.profileId, targetProfileId));
+    for (const u of umkmList) {
+      // Find all sales for this umkm
+      const uSales = await db.select({ id: sales.id }).from(sales).where(eq(sales.umkmId, u.id));
+      const saleIds = uSales.map((s) => s.id);
+      if (saleIds.length > 0) {
+        await db.delete(saleItems).where(inArray(saleItems.saleId, saleIds));
+        await db.delete(sales).where(eq(sales.umkmId, u.id));
+      }
+
+      // Delete products
+      await db.delete(products).where(eq(products.umkmId, u.id));
+
+      // Find action plans for this umkm
+      const uPlans = await db.select({ id: actionPlans.id }).from(actionPlans).where(eq(actionPlans.umkmId, u.id));
+      const planIds = uPlans.map((p) => p.id);
+      if (planIds.length > 0) {
+        await db.delete(actionPlanEvaluations).where(inArray(actionPlanEvaluations.actionPlanId, planIds));
+        await db.delete(actionPlans).where(eq(actionPlans.umkmId, u.id));
+      }
+
+      // Delete mentoring sessions
+      await db.delete(mentoringSessions).where(eq(mentoringSessions.umkmId, u.id));
+
+      // Delete mentor assignments
+      await db.delete(mentorAssignments).where(eq(mentorAssignments.umkmId, u.id));
+
+      // Delete umkm profile
+      await db.delete(umkmProfiles).where(eq(umkmProfiles.id, u.id));
+    }
+
+    // 2. If Mentor profile exists, cascade delete related records
+    const mentorList = await db.select().from(mentorProfiles).where(eq(mentorProfiles.profileId, targetProfileId));
+    for (const m of mentorList) {
+      // Delete evaluations made by mentor
+      await db.delete(actionPlanEvaluations).where(eq(actionPlanEvaluations.mentorId, m.id));
+
+      // Disassociate or delete action plans & sessions made by mentor
+      const mPlans = await db.select({ id: actionPlans.id }).from(actionPlans).where(eq(actionPlans.mentorId, m.id));
+      const mPlanIds = mPlans.map((p) => p.id);
+      if (mPlanIds.length > 0) {
+        await db.delete(actionPlanEvaluations).where(inArray(actionPlanEvaluations.actionPlanId, mPlanIds));
+        await db.delete(actionPlans).where(eq(actionPlans.mentorId, m.id));
+      }
+
+      await db.delete(mentoringSessions).where(eq(mentoringSessions.mentorId, m.id));
+      await db.delete(mentorAssignments).where(eq(mentorAssignments.mentorId, m.id));
+      await db.delete(mentorProfiles).where(eq(mentorProfiles.id, m.id));
+    }
+
+    // 3. Clear programParticipants
+    await db.delete(programParticipants).where(eq(programParticipants.profileId, targetProfileId));
+
+    // 4. Update programs createdBy
+    await db.update(programs).set({ createdBy: null }).where(eq(programs.createdBy, targetProfileId));
+
+    // 5. Update mentorAssignments createdBy
+    await db.update(mentorAssignments).set({ createdBy: null }).where(eq(mentorAssignments.createdBy, targetProfileId));
+
+    // 6. Delete or update invitations
+    await db.delete(invitations).where(or(eq(invitations.email, targetUser.email), eq(invitations.invitedBy, targetProfileId)));
+
+    // 7. Finally delete from profiles
+    await db.delete(profiles).where(eq(profiles.id, targetProfileId));
+
+    // 8. Log audit
+    await logAudit(req.profile!.id, 'ADMIN_DELETE_USER', 'profiles', targetProfileId, {
+      deletedEmail: targetUser.email,
+      deletedRole: targetUser.role,
+      deletedFullName: targetUser.fullName,
+    });
+
+    res.json({
+      message: `Akun ${targetUser.fullName} (${targetUser.email}) berhasil dihapus permanen beserta seluruh data terkait.`,
+      deletedId: targetProfileId,
+    });
+  } catch (error: any) {
+    console.error('Error in admin delete-account:', error);
+    res.status(500).json({ error: 'Gagal menghapus akun pengguna: ' + error.message });
   }
 });
 
