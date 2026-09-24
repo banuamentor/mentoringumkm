@@ -38,8 +38,9 @@ export function generateSecureToken(bytes = 32): string {
 
 /**
  * Generate a signed session token: s.<base64Payload>.<hmacSignature>
+ * Default expiration: 365 days (persistent login unless user explicitly signs out)
  */
-export function generateSignedSessionToken(userId: number, email: string, expiresInMs = 7 * 24 * 60 * 60 * 1000): string {
+export function generateSignedSessionToken(userId: number, email: string, expiresInMs = 365 * 24 * 60 * 60 * 1000): string {
   const payload = {
     id: userId,
     email: email.toLowerCase().trim(),
@@ -81,9 +82,9 @@ export function verifySignedSessionToken(token: string): { valid: boolean; email
     }
   }
 
-  // Backward compatibility for existing active browser sessions (auth-token-...)
-  if (token.startsWith('auth-token-')) {
-    const rawEmail = decodeURIComponent(token.replace(/^auth-token-/, ''));
+  // Backward compatibility for active browser sessions (auth-token-... or demo-token-...)
+  if (token.startsWith('auth-token-') || token.startsWith('demo-token-')) {
+    const rawEmail = decodeURIComponent(token.replace(/^(auth-token-|demo-token-)/, ''));
     if (rawEmail && rawEmail.includes('@')) {
       return { valid: true, email: rawEmail.toLowerCase().trim() };
     }

@@ -1,7 +1,25 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, UmkmProfile, MentorProfile, UserRole } from '../types/index.ts';
 import { auth, googleAuthProvider } from '../lib/firebase.ts';
-import { signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
+
+const STORAGE_KEYS = {
+  TOKEN: 'auth_token',
+  USER: 'auth_user_profile',
+  UMKM: 'auth_umkm_profile',
+  MENTOR: 'auth_mentor_profile',
+  LAST_TAB: 'banua_active_tab',
+};
+
+function getStoredJson<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -19,83 +37,134 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   switchDemoRole: (role: UserRole) => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: (silent?: boolean) => Promise<void>;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [umkm, setUmkm] = useState<UmkmProfile | null>(null);
-  const [mentor, setMentor] = useState<MentorProfile | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('auth_token'));
-  const [loading, setLoading] = useState<boolean>(true);
+  // Synchronously restore state from localStorage on first boot so there is ZERO screen flicker to Landing Page
+  const [token, setToken] = useState<string | null>(() => {
+    return typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TOKEN) : null;
+  });
+  const [user, setUser] = useState<UserProfile | null>(() => getStoredJson<UserProfile>(STORAGE_KEYS.USER));
+  const [umkm, setUmkm] = useState<UmkmProfile | null>(() => getStoredJson<UmkmProfile>(STORAGE_KEYS.UMKM));
+  const [mentor, setMentor] = useState<MentorProfile | null>(() => getStoredJson<MentorProfile>(STORAGE_KEYS.MENTOR));
 
-  // Helper authenticated fetch
-  const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    const currentToken = token || localStorage.getItem('auth_token');
+  // If token exists but user object is not yet populated, set loading = true to await first validation
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const savedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
+    return Boolean(savedToken && !savedUser);
+  });
+
+  // Helper to persist auth data consistently across localStorage and state
+  const persistSession = useCallback((
+    newToken: string | null,
+    newUser: UserProfile | null,
+    newUmkm: UmkmProfile | null,
+    newMentor: MentorProfile | null
+  ) => {
+    if (typeof window !== 'undefined') {
+      if (newToken) {
+        localStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      }
+
+      if (newUser) {
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
+
+      if (newUmkm) {
+        localStorage.setItem(STORAGE_KEYS.UMKM, JSON.stringify(newUmkm));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.UMKM);
+      }
+
+      if (newMentor) {
+        localStorage.setItem(STORAGE_KEYS.MENTOR, JSON.stringify(newMentor));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.MENTOR);
+      }
+    }
+
+    setToken(newToken);
+    setUser(newUser);
+    setUmkm(newUmkm);
+    setMentor(newMentor);
+  }, []);
+
+  // Helper authenticated fetch with active token
+  const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TOKEN) : null);
     const headers = {
       'Content-Type': 'application/json',
       ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
       ...(options.headers || {}),
     };
     return fetch(url, { ...options, headers });
-  };
+  }, [token]);
 
-  const refreshProfile = async () => {
-    const currentToken = token || localStorage.getItem('auth_token');
+  // Refresh profile from server (with retries for connection resilience)
+  const refreshProfile = useCallback(async (silent = true) => {
+    const currentToken = token || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TOKEN) : null);
     if (!currentToken) {
-      setUser(null);
-      setUmkm(null);
-      setMentor(null);
+      persistSession(null, null, null, null);
       setLoading(false);
       return;
     }
 
+    if (!silent && !user) {
+      setLoading(true);
+    }
+
     try {
-      let res = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${currentToken}`,
-        },
-      }).catch(async () => {
-        // Short pause and one retry in case server was starting up
-        await new Promise((r) => setTimeout(r, 600));
-        return fetch('/api/auth/me', {
-          headers: {
-            Authorization: `Bearer ${currentToken}`,
-          },
-        });
-      });
+      let res: Response | null = null;
+      // Retry up to 3 times in case the backend server is warming up
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          res = await fetch('/api/auth/me', {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          });
+          if (res) break;
+        } catch (err) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          }
+        }
+      }
 
       if (res && res.ok) {
         const data = await res.json();
-        setUser(data.profile);
-        setUmkm(data.umkm);
-        setMentor(data.mentor);
+        persistSession(currentToken, data.profile, data.umkm, data.mentor);
       } else if (res && (res.status === 401 || res.status === 403)) {
-        // Token might have expired or user suspended
-        console.warn('Session expired or profile invalid');
-        localStorage.removeItem('auth_token');
-        setToken(null);
-        setUser(null);
-        setUmkm(null);
-        setMentor(null);
+        // Explicit invalidation by server (token revoked or user deactivated)
+        console.warn('Sesi login telah kedaluwarsa atau akun dinonaktifkan.');
+        persistSession(null, null, null, null);
+      } else {
+        // Network issue or 5xx: DO NOT boot the user out! Keep local cached session
+        console.warn('Tidak dapat menghubungi server auth, mempertahankan sesi tersimpan.');
       }
     } catch (err) {
-      console.warn('Session check ended with network issue:', err);
+      console.warn('Pemeriksaan status sesi:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [token, user, persistSession]);
 
-  // On mount: check auth token
+  // On initial component mount: revalidate profile in background
   useEffect(() => {
     const init = async () => {
-      const saved = localStorage.getItem('auth_token');
-      if (saved) {
-        setToken(saved);
-        await refreshProfile();
+      const savedToken = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TOKEN) : null;
+      if (savedToken) {
+        await refreshProfile(true);
       } else {
         setLoading(false);
       }
@@ -123,11 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      localStorage.setItem('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.profile);
-      setUmkm(data.umkm);
-      setMentor(data.mentor);
+      persistSession(data.token, data.profile, data.umkm, data.mentor);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Koneksi ke server gagal' };
@@ -157,11 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: data.error || 'Pendaftaran gagal' };
       }
 
-      localStorage.setItem('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.profile);
-      setUmkm(data.umkm);
-      setMentor(null);
+      persistSession(data.token, data.profile, data.umkm, null);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Koneksi ke server gagal' };
@@ -194,12 +255,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Reset password
-  const resetPassword = async (token: string, newPassword: string) => {
+  const resetPassword = async (tokenParam: string, newPassword: string) => {
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword }),
+        body: JSON.stringify({ token: tokenParam, newPassword }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -212,9 +273,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Verify mentor invite token
-  const verifyInvite = async (token: string) => {
+  const verifyInvite = async (inviteToken: string) => {
     try {
-      const res = await fetch(`/api/auth/verify-invite?token=${encodeURIComponent(token)}`);
+      const res = await fetch(`/api/auth/verify-invite?token=${encodeURIComponent(inviteToken)}`);
       const data = await res.json();
       if (!res.ok || !data.valid) {
         return { valid: false, error: data.error || 'Undangan tidak valid' };
@@ -231,24 +292,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Accept mentor invite & set initial password
-  const acceptInvite = async (token: string, password: string) => {
+  const acceptInvite = async (inviteToken: string, password: string) => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/accept-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token: inviteToken, password }),
       });
       const data = await res.json();
       if (!res.ok) {
         return { success: false, error: data.error || 'Aktivasi mentor gagal' };
       }
 
-      localStorage.setItem('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.profile);
-      setMentor(data.mentor);
-      setUmkm(null);
+      persistSession(data.token, data.profile, null, data.mentor);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Koneksi ke server gagal' };
@@ -263,9 +320,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, googleAuthProvider);
       const idToken = await result.user.getIdToken();
-      localStorage.setItem('auth_token', idToken);
+      localStorage.setItem(STORAGE_KEYS.TOKEN, idToken);
       setToken(idToken);
-      await refreshProfile();
+      await refreshProfile(false);
     } catch (err: any) {
       console.error('Google Sign In failed:', err);
       throw err;
@@ -289,11 +346,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const data = await res.json();
-      localStorage.setItem('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.profile);
-      setUmkm(data.umkm);
-      setMentor(data.mentor);
+      persistSession(data.token, data.profile, data.umkm, data.mentor);
     } catch (err) {
       console.error('Switch demo role error:', err);
     } finally {
@@ -301,14 +354,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Sign Out
+  // Explicit Sign Out (Only when user explicitly clicks Keluar / Logout)
   const signOut = async () => {
     try {
       await fbSignOut(auth);
-    } catch (e) {
+    } catch {
       // ignore
     }
-    localStorage.removeItem('auth_token');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.UMKM);
+      localStorage.removeItem(STORAGE_KEYS.MENTOR);
+      localStorage.removeItem(STORAGE_KEYS.LAST_TAB);
+    }
     setToken(null);
     setUser(null);
     setUmkm(null);

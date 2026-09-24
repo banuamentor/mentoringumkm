@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -31,6 +31,22 @@ import { AdminAuditLogs } from './views/admin/AdminAuditLogs.tsx';
 
 import { MentorAssignment } from './types/index.ts';
 
+const TAB_STORAGE_KEY = 'banua_active_tab';
+
+const isTabValidForRole = (tab: string | null | undefined, currentRole: string) => {
+  if (!tab) return false;
+  if (currentRole === 'ADMIN') return tab.startsWith('admin-');
+  if (currentRole === 'MENTOR') return tab.startsWith('mentor-');
+  if (currentRole === 'UMKM') return tab.startsWith('umkm-');
+  return false;
+};
+
+const getDefaultTabForRole = (currentRole: string) => {
+  if (currentRole === 'ADMIN') return 'admin-dashboard';
+  if (currentRole === 'MENTOR') return 'mentor-dashboard';
+  return 'umkm-dashboard';
+};
+
 const MainLayout: React.FC = () => {
   const { role, user, loading } = useAuth();
 
@@ -39,28 +55,39 @@ const MainLayout: React.FC = () => {
   const inviteParam = urlParams?.get('invite');
   const resetParam = urlParams?.get('reset');
 
-  // Navigation state defaults based on role
-  const getDefaultTab = () => {
-    if (role === 'ADMIN') return 'admin-dashboard';
-    if (role === 'MENTOR') return 'mentor-dashboard';
-    return 'umkm-dashboard';
-  };
+  // Initialize active tab from localStorage if valid for the current role
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(TAB_STORAGE_KEY);
+      if (saved && isTabValidForRole(saved, role)) {
+        return saved;
+      }
+    }
+    return getDefaultTabForRole(role);
+  });
 
-  const [activeTab, setActiveTab] = useState<string>(getDefaultTab());
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TAB_STORAGE_KEY, tab);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const [selectedAssignment, setSelectedAssignment] = useState<MentorAssignment | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
-  // Strict role enforcement: ensure activeTab matches current role
+  // Enforce role consistency: ensure activeTab matches current role
   useEffect(() => {
-    const isTabValid = (tab: string, currentRole: string) => {
-      if (currentRole === 'ADMIN') return tab.startsWith('admin-');
-      if (currentRole === 'MENTOR') return tab.startsWith('mentor-');
-      if (currentRole === 'UMKM') return tab.startsWith('umkm-');
-      return false;
-    };
-
-    if (!isTabValid(activeTab, role)) {
-      setActiveTab(getDefaultTab());
+    if (!isTabValidForRole(activeTab, role)) {
+      const defaultTab = getDefaultTabForRole(role);
+      setActiveTabState(defaultTab);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(TAB_STORAGE_KEY, defaultTab);
+      }
       setSelectedAssignment(null);
     }
   }, [role, activeTab]);
@@ -70,13 +97,14 @@ const MainLayout: React.FC = () => {
     setActiveTab('mentor-umkm-detail');
   };
 
-  if (loading) {
+  // Only show full-screen loader if loading is true AND we don't even have a cached user profile
+  if (loading && !user) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-9 w-9 animate-spin rounded-full border-3 border-indigo-500 border-t-transparent" />
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-emerald-500 border-t-transparent" />
           <p className="text-xs font-semibold text-slate-300">
-            Memuat Sistem Pendampingan UMKM...
+            Membuka Dasbor Pendampingan UMKM...
           </p>
         </div>
       </div>
