@@ -25,12 +25,19 @@ export const UmkmProducts: React.FC = () => {
   // Form Modal
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    sku: string;
+    unit: string;
+    defaultSellingPrice: number | '';
+    defaultHpp: number | '';
+    status: string;
+  }>({
     name: '',
     sku: '',
     unit: 'pcs',
-    defaultSellingPrice: 0,
-    defaultHpp: 0,
+    defaultSellingPrice: '',
+    defaultHpp: '',
     status: 'ACTIVE',
   });
   const [saving, setSaving] = useState<boolean>(false);
@@ -61,8 +68,8 @@ export const UmkmProducts: React.FC = () => {
       name: '',
       sku: '',
       unit: 'pack',
-      defaultSellingPrice: 0,
-      defaultHpp: 0,
+      defaultSellingPrice: '',
+      defaultHpp: '',
       status: 'ACTIVE',
     });
     setErrorMsg(null);
@@ -75,8 +82,8 @@ export const UmkmProducts: React.FC = () => {
       name: p.name,
       sku: p.sku || '',
       unit: p.unit || 'pcs',
-      defaultSellingPrice: p.defaultSellingPrice,
-      defaultHpp: p.defaultHpp,
+      defaultSellingPrice: p.defaultSellingPrice === 0 ? '' : p.defaultSellingPrice,
+      defaultHpp: p.defaultHpp === 0 ? '' : p.defaultHpp,
       status: p.status,
     });
     setErrorMsg(null);
@@ -97,9 +104,15 @@ export const UmkmProducts: React.FC = () => {
       const url = editingProduct ? `/api/products/${editingProduct.id}` : '/api/products';
       const method = editingProduct ? 'PUT' : 'POST';
 
+      const payload = {
+        ...formData,
+        defaultSellingPrice: Number(formData.defaultSellingPrice) || 0,
+        defaultHpp: Number(formData.defaultHpp) || 0,
+      };
+
       const res = await fetchWithAuth(url, {
         method,
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const resData = await res.json();
@@ -134,8 +147,10 @@ export const UmkmProducts: React.FC = () => {
     return p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q));
   });
 
-  const estimatedProfit = formData.defaultSellingPrice - formData.defaultHpp;
-  const estimatedMargin = formData.defaultSellingPrice > 0 ? (estimatedProfit / formData.defaultSellingPrice) * 100 : 0;
+  const sellingNum = Number(formData.defaultSellingPrice) || 0;
+  const hppNum = Number(formData.defaultHpp) || 0;
+  const estimatedProfit = sellingNum - hppNum;
+  const estimatedMargin = sellingNum > 0 ? (estimatedProfit / sellingNum) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -340,10 +355,12 @@ export const UmkmProducts: React.FC = () => {
                     type="number"
                     min="0"
                     required
-                    value={formData.defaultSellingPrice}
-                    onChange={(e) =>
-                      setFormData({ ...formData, defaultSellingPrice: Number(e.target.value) })
-                    }
+                    placeholder="Contoh: 35000"
+                    value={formData.defaultSellingPrice === '' ? '' : formData.defaultSellingPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormData({ ...formData, defaultSellingPrice: raw === '' ? '' : Number(raw) });
+                    }}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-slate-900 focus:outline-none"
                   />
                 </div>
@@ -354,8 +371,12 @@ export const UmkmProducts: React.FC = () => {
                     type="number"
                     min="0"
                     required
-                    value={formData.defaultHpp}
-                    onChange={(e) => setFormData({ ...formData, defaultHpp: Number(e.target.value) })}
+                    placeholder="Contoh: 25000"
+                    value={formData.defaultHpp === '' ? '' : formData.defaultHpp}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormData({ ...formData, defaultHpp: raw === '' ? '' : Number(raw) });
+                    }}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-slate-900 focus:outline-none"
                   />
                 </div>

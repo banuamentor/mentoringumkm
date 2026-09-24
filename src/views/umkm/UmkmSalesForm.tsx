@@ -966,8 +966,12 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                         <input
                           type="number"
                           min="0"
-                          value={item.sellingPrice}
-                          onChange={(e) => handleClassicPriceChange(idx, Number(e.target.value))}
+                          placeholder="0"
+                          value={item.sellingPrice === 0 ? '' : item.sellingPrice}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                            handleClassicPriceChange(idx, raw === '' ? 0 : Number(raw));
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-right text-xs font-medium text-slate-900"
                         />
                       </td>
@@ -975,8 +979,12 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity}
-                          onChange={(e) => handleClassicQtyChange(idx, Number(e.target.value))}
+                          placeholder="1"
+                          value={item.quantity === 0 ? '' : item.quantity}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                            handleClassicQtyChange(idx, raw === '' ? 1 : Number(raw));
+                          }}
                           className="w-20 rounded-lg border border-slate-300 px-2.5 py-1.5 text-center text-xs font-medium text-slate-900"
                         />
                       </td>
@@ -1070,7 +1078,7 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                 min="0"
                 placeholder={discountType === 'PERCENTAGE' ? "Contoh: 10" : "Contoh: 15000"}
                 value={discountValue}
-                onChange={(e) => setDiscountValue(e.target.value)}
+                onChange={(e) => setDiscountValue(e.target.value.replace(/^0+(?=\d)/, ''))}
                 className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -1093,7 +1101,7 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                 min="0"
                 placeholder="Contoh: 10000"
                 value={shippingFee}
-                onChange={(e) => setShippingFee(e.target.value)}
+                onChange={(e) => setShippingFee(e.target.value.replace(/^0+(?=\d)/, ''))}
                 className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -1126,7 +1134,7 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                 min="0"
                 placeholder={taxType === 'PERCENTAGE' ? "Contoh: 11" : "Contoh: 5000"}
                 value={taxValue}
-                onChange={(e) => setTaxValue(e.target.value)}
+                onChange={(e) => setTaxValue(e.target.value.replace(/^0+(?=\d)/, ''))}
                 className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -1149,7 +1157,7 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                 min="0"
                 placeholder="Contoh: 2000"
                 value={otherFee}
-                onChange={(e) => setOtherFee(e.target.value)}
+                onChange={(e) => setOtherFee(e.target.value.replace(/^0+(?=\d)/, ''))}
                 className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-1.5 text-xs text-slate-900 focus:border-slate-500 focus:outline-none"
               />
             </div>
