@@ -60,6 +60,9 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
   const [modalStartDate, setModalStartDate] = useState<string>('');
   const [modalEndDate, setModalEndDate] = useState<string>('');
   const [modalChannelFilter, setModalChannelFilter] = useState<string>('');
+  const [modalSigningCity, setModalSigningCity] = useState<string>(
+    umkm?.cityRegency || 'Banjarmasin'
+  );
   const [modalSignerName, setModalSignerName] = useState<string>(
     umkm?.ownerName || user?.fullName || 'Pemilik Usaha'
   );
@@ -110,12 +113,15 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
     setModalEndDate(dates.end);
   }, []);
 
-  // Update signer name default when umkm or user profile updates
+  // Update signer name and city defaults when umkm or user profile updates
   useEffect(() => {
     if (umkm?.ownerName) {
       setModalSignerName(umkm.ownerName);
     } else if (user?.fullName) {
       setModalSignerName(user.fullName);
+    }
+    if (umkm?.cityRegency) {
+      setModalSigningCity(umkm.cityRegency);
     }
   }, [umkm, user]);
 
@@ -319,8 +325,9 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
         cityRegency: umkm?.cityRegency || undefined,
         periodLabel: `${periodLabel}${channelSuffix}`,
         generatedBy: user?.fullName || umkm?.ownerName || 'Pemilik Usaha UMKM',
-        signerName: umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
-        signerTitle: 'Pemilik Usaha / Pimpinan UMKM',
+        signingCity: modalSigningCity || umkm?.cityRegency || 'Banjarmasin',
+        signerName: modalSignerName || umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
+        signerTitle: modalSignerTitle || 'Pemilik Usaha / Pimpinan UMKM',
         sales: filteredSales,
       });
 
@@ -375,6 +382,7 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
         cityRegency: umkm?.cityRegency || undefined,
         periodLabel: `${periodLabel}${channelSuffix}`,
         generatedBy: user?.fullName || modalSignerName,
+        signingCity: modalSigningCity || umkm?.cityRegency || 'Banjarmasin',
         signerName: modalSignerName,
         signerTitle: modalSignerTitle,
         sales: targetSales,
@@ -611,17 +619,17 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[820px] text-left text-xs">
             <thead className="border-b border-slate-200 bg-slate-50/90 text-slate-600">
               <tr>
-                <th className="py-3 px-4 font-semibold">No. Invoice / Tanggal</th>
-                <th className="py-3 px-4 font-semibold">Saluran</th>
-                <th className="py-3 px-4 font-semibold">Pelanggan / Catatan</th>
-                <th className="py-3 px-4 font-semibold text-right">Omzet</th>
-                <th className="py-3 px-4 font-semibold text-right">Total HPP</th>
-                <th className="py-3 px-4 font-semibold text-right">Laba Kotor</th>
-                <th className="py-3 px-4 font-semibold text-center">Margin %</th>
-                <th className="py-3 px-4 font-semibold text-center">Aksi / Cetak</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">No. Invoice / Tanggal</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Saluran</th>
+                <th className="py-3 px-4 font-semibold whitespace-nowrap">Pelanggan / Catatan</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Omzet</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Total HPP</th>
+                <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">Laba Kotor</th>
+                <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">Margin %</th>
+                <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">Aksi / Cetak</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -652,18 +660,18 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                   const invNumber = `INV-${String(sale.id).padStart(5, '0')}`;
                   return (
                     <tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="font-semibold text-slate-900">{invNumber}</div>
                         <div className="text-[11px] text-slate-500">{formatDate(sale.transactionDate)}</div>
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
                           {sale.channelName || 'Toko Fisik'}
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-slate-700">
+                      <td className="py-3 px-4 text-slate-700 whitespace-nowrap">
                         <div className="font-medium text-slate-900">
                           {sale.customerName || <span className="text-slate-400 italic">Pelanggan Umum</span>}
                         </div>
@@ -678,19 +686,19 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-semibold text-slate-900">
+                      <td className="py-3 px-4 text-right font-semibold text-slate-900 whitespace-nowrap">
                         {formatCurrency(sale.totalRevenue)}
                       </td>
 
-                      <td className="py-3 px-4 text-right text-slate-500">
+                      <td className="py-3 px-4 text-right text-slate-500 whitespace-nowrap">
                         {formatCurrency(sale.totalHpp)}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-semibold text-emerald-700">
+                      <td className="py-3 px-4 text-right font-semibold text-emerald-700 whitespace-nowrap">
                         {formatCurrency(sale.grossProfit)}
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         <span
                           className={`rounded px-1.5 py-0.5 font-semibold text-[11px] ${
                             marginPct >= 40
@@ -704,7 +712,7 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           {/* Cetak Nota / Struk PDF di setiap transaksi */}
                           <button
@@ -1073,7 +1081,19 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                   Pengesahan & Lembar Tanda Tangan
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Tempat Pengesahan (Kota/Kab)
+                    </label>
+                    <input
+                      type="text"
+                      value={modalSigningCity}
+                      onChange={(e) => setModalSigningCity(e.target.value)}
+                      placeholder="Contoh: Banjarmasin"
+                      className="w-full rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-teal-600 focus:outline-none"
+                    />
+                  </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       Nama Penandatangan
@@ -1088,7 +1108,7 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Jabatan Resmi
+                      Jabatan / Posisi Resmi
                     </label>
                     <input
                       type="text"

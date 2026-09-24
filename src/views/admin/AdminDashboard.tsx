@@ -146,12 +146,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Top UMKM Performers Table */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Peringkat Omzet Bisnis UMKM</h2>
                 <p className="text-xs text-slate-500">UMKM dengan kontribusi omzet tertinggi</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => onNavigate('admin-transactions')}
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors cursor-pointer"
@@ -163,33 +163,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-slate-200 text-slate-500">
+              <table className="w-full min-w-[520px] text-left text-xs">
+                <thead className="border-b border-slate-200 text-slate-500 bg-slate-50/50">
                   <tr>
-                    <th className="pb-2 font-semibold">Nama UMKM</th>
-                    <th className="pb-2 font-semibold">Pemilik</th>
-                    <th className="pb-2 font-semibold text-center">Trx</th>
-                    <th className="pb-2 font-semibold text-right">Omzet</th>
-                    <th className="pb-2 font-semibold text-right">Laba Kotor</th>
+                    <th className="py-2.5 px-3 font-semibold text-center w-10 whitespace-nowrap">#</th>
+                    <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Nama UMKM</th>
+                    <th className="py-2.5 px-3 font-semibold whitespace-nowrap">Pemilik</th>
+                    <th className="py-2.5 px-2 font-semibold text-center whitespace-nowrap">Trx</th>
+                    <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">Omzet</th>
+                    <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">Laba Kotor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {analytics.topUmkm.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-4 text-center text-slate-400">
+                      <td colSpan={6} className="py-6 text-center text-slate-400">
                         Belum ada transaksi
                       </td>
                     </tr>
                   ) : (
                     analytics.topUmkm.map((u: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 font-bold text-slate-900">{u.businessName}</td>
-                        <td className="py-2.5 text-slate-600">{u.ownerName}</td>
-                        <td className="py-2.5 text-center text-slate-600">{u.transactions}</td>
-                        <td className="py-2.5 text-right font-semibold text-slate-900">
+                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                              idx === 0
+                                ? 'bg-amber-100 text-amber-800'
+                                : idx === 1
+                                ? 'bg-slate-200 text-slate-700'
+                                : idx === 2
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'text-slate-400 font-medium'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                          <div className="max-w-[150px] truncate" title={u.businessName}>
+                            {u.businessName}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                          <div className="max-w-[120px] truncate" title={u.ownerName}>
+                            {u.ownerName || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-center text-slate-600 font-medium whitespace-nowrap">
+                          {u.transactions}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-slate-900 whitespace-nowrap">
                           {formatCurrency(u.revenue)}
                         </td>
-                        <td className="py-2.5 text-right font-semibold text-emerald-700">
+                        <td className="py-2.5 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
                           {formatCurrency(u.grossProfit)}
                         </td>
                       </tr>
@@ -210,23 +236,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             <div className="h-64 w-full">
               {analytics.sectorDistribution && analytics.sectorDistribution.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.sectorDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                  <BarChart data={analytics.sectorDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis
                       dataKey="sector"
                       tick={{ fontSize: 10, fill: '#64748b' }}
-                      interval={0}
-                      angle={-20}
-                      textAnchor="end"
+                      interval="preserveStartEnd"
+                      tickLine={false}
+                      dy={5}
                     />
                     <YAxis
                       tick={{ fontSize: 10, fill: '#64748b' }}
                       axisLine={false}
                       tickLine={false}
+                      allowDecimals={false}
                     />
                     <Tooltip
                       formatter={(val: any) => [`${val} UMKM`, 'Jumlah']}
-                      contentStyle={{ borderRadius: '8px', fontSize: '11px' }}
+                      contentStyle={{ borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     />
                     <Bar dataKey="count" name="Jumlah UMKM" fill="#6366f1" radius={[4, 4, 0, 0]} />
                   </BarChart>

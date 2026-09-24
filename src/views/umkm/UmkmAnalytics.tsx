@@ -13,6 +13,9 @@ import {
   Layers,
   ShoppingBag,
   Share2,
+  FileText,
+  Printer,
+  X,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -26,10 +29,20 @@ import {
 } from 'recharts';
 
 export const UmkmAnalytics: React.FC = () => {
-  const { fetchWithAuth, umkm } = useAuth();
+  const { fetchWithAuth, umkm, user } = useAuth();
   const [data, setData] = useState<UmkmAnalyticsData | null>(null);
   const [period, setPeriod] = useState<string>('this_month');
   const [loading, setLoading] = useState<boolean>(true);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [signingCity, setSigningCity] = useState<string>(umkm?.cityRegency || 'Banjarmasin');
+  const [signerName, setSignerName] = useState<string>(umkm?.ownerName || user?.fullName || 'Pemilik Usaha');
+  const [signerTitle, setSignerTitle] = useState<string>('Pemilik Usaha / Pimpinan UMKM');
+
+  useEffect(() => {
+    if (umkm?.cityRegency) setSigningCity(umkm.cityRegency);
+    if (umkm?.ownerName) setSignerName(umkm.ownerName);
+    else if (user?.fullName) setSignerName(user.fullName);
+  }, [umkm, user]);
 
   const loadData = async (filter: string) => {
     setLoading(true);
@@ -62,8 +75,14 @@ export const UmkmAnalytics: React.FC = () => {
     exportUmkmReportPDF(
       umkm?.businessName || 'Kopi Nusantara Roastery',
       data,
-      periodLabelMap[period] || period
+      periodLabelMap[period] || period,
+      {
+        signingCity: signingCity || umkm?.cityRegency || 'Banjarmasin',
+        signerName: signerName || 'Pemilik Usaha',
+        signerTitle: signerTitle || 'Pemilik Usaha / Pimpinan UMKM',
+      }
     );
+    setShowReportModal(false);
   };
 
   return (
@@ -103,9 +122,9 @@ export const UmkmAnalytics: React.FC = () => {
           </div>
 
           <button
-            onClick={handleExportPDF}
+            onClick={() => setShowReportModal(true)}
             disabled={!data}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors cursor-pointer"
           >
             <Download className="h-4 w-4" />
             <span>Ekspor PDF</span>
@@ -344,6 +363,100 @@ export const UmkmAnalytics: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Generator Laporan Bisnis PDF */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Konfigurasi Laporan Analisis Kinerja
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Cetak dokumen laporan resmi performa produk & saluran penjualan
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Data Pengesahan Laporan */}
+            <div className="rounded-xl bg-slate-50 p-4 border border-slate-200 space-y-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Data Pengesahan Laporan (Tanda Tangan Resmi)
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Tempat Pengesahan
+                  </label>
+                  <input
+                    type="text"
+                    value={signingCity}
+                    onChange={(e) => setSigningCity(e.target.value)}
+                    placeholder="Contoh: Banjarmasin"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Nama Penandatangan
+                  </label>
+                  <input
+                    type="text"
+                    value={signerName}
+                    onChange={(e) => setSignerName(e.target.value)}
+                    placeholder="Nama Pemilik / Manajer"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Posisi / Jabatan
+                  </label>
+                  <input
+                    type="text"
+                    value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="Pemilik Usaha / Pimpinan"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowReportModal(false)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExportPDF}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+              >
+                <Printer className="h-4 w-4" />
+                <span>Cetak & Unduh Laporan PDF</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

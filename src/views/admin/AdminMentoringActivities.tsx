@@ -93,6 +93,7 @@ export const AdminMentoringActivities: React.FC = () => {
   const [pdfPeriodPreset, setPdfPeriodPreset] = useState<string>('all');
   const [pdfStartDate, setPdfStartDate] = useState<string>('');
   const [pdfEndDate, setPdfEndDate] = useState<string>('');
+  const [pdfSigningCity, setPdfSigningCity] = useState<string>('Banjarmasin');
   const [pdfSignerName, setPdfSignerName] = useState<string>(user?.fullName || 'Administrator Sistem UMKM');
   const [pdfSignerTitle, setPdfSignerTitle] = useState<string>('Koordinator Monitoring & Evaluasi Pendampingan');
 
@@ -372,6 +373,7 @@ export const AdminMentoringActivities: React.FC = () => {
         programName,
         periodText,
         generatedBy: user?.fullName || 'Administrator Sistem',
+        signingCity: pdfSigningCity || 'Banjarmasin',
         signerName: user?.fullName || 'Administrator Banua Mentor',
         signerTitle: 'Koordinator Pendampingan UMKM Terpadu',
         sessions,
@@ -465,6 +467,7 @@ export const AdminMentoringActivities: React.FC = () => {
         programName,
         periodText,
         generatedBy: user?.fullName || 'Administrator Sistem',
+        signingCity: pdfSigningCity || 'Banjarmasin',
         signerName: pdfSignerName,
         signerTitle: pdfSignerTitle,
         sessions: targetSessions,
@@ -844,17 +847,17 @@ export const AdminMentoringActivities: React.FC = () => {
         /* TAB 1: MENTORING SESSIONS TABLE */
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+            <table className="w-full min-w-[880px] divide-y divide-slate-200 text-left text-xs">
               <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 <tr>
-                  <th className="px-3.5 py-3 text-center">#</th>
-                  <th className="px-3.5 py-3">Tanggal Sesi</th>
-                  <th className="px-3.5 py-3">Program</th>
-                  <th className="px-3.5 py-3">Mentor Pendamping</th>
-                  <th className="px-3.5 py-3">UMKM Dampingan</th>
-                  <th className="px-3.5 py-3">Topik & Pokok Masalah</th>
-                  <th className="px-3.5 py-3">Rekomendasi Utama</th>
-                  <th className="px-3.5 py-3 text-center">Aksi & Detail</th>
+                  <th className="px-3.5 py-3 text-center whitespace-nowrap">#</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Tanggal Sesi</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Program</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Mentor Pendamping</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">UMKM Dampingan</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Topik & Pokok Masalah</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Rekomendasi Utama</th>
+                  <th className="px-3.5 py-3 text-center whitespace-nowrap">Aksi & Detail</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -869,7 +872,7 @@ export const AdminMentoringActivities: React.FC = () => {
                 ) : (
                   sessions.map((s, idx) => (
                     <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-3.5 py-3 text-center font-mono text-slate-400 text-[11px]">{idx + 1}</td>
+                      <td className="px-3.5 py-3 text-center font-mono text-slate-400 text-[11px] whitespace-nowrap">{idx + 1}</td>
                       <td className="px-3.5 py-3 font-medium text-slate-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="h-3.5 w-3.5 text-teal-600" />
@@ -877,16 +880,16 @@ export const AdminMentoringActivities: React.FC = () => {
                         </div>
                         <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">ID #{s.id}</span>
                       </td>
-                      <td className="px-3.5 py-3">
+                      <td className="px-3.5 py-3 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-800">
                           {s.programName || '-'}
                         </span>
                       </td>
-                      <td className="px-3.5 py-3">
+                      <td className="px-3.5 py-3 whitespace-nowrap">
                         <div className="font-semibold text-slate-900">{s.mentorName || '-'}</div>
                         <div className="text-[11px] text-slate-500">{s.mentorInstitution || 'Tenaga Mentor'}</div>
                       </td>
-                      <td className="px-3.5 py-3">
+                      <td className="px-3.5 py-3 whitespace-nowrap">
                         <div className="font-semibold text-teal-800">{s.businessName || '-'}</div>
                         <div className="text-[11px] text-slate-500">
                           {s.ownerName ? `Pemilik: ${s.ownerName}` : ''} {s.cityRegency ? `(${s.cityRegency})` : ''}
@@ -933,17 +936,17 @@ export const AdminMentoringActivities: React.FC = () => {
         /* TAB 2: ACTION PLANS TABLE */
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+            <table className="w-full min-w-[850px] divide-y divide-slate-200 text-left text-xs">
               <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600">
                 <tr>
-                  <th className="px-3.5 py-3 text-center">#</th>
-                  <th className="px-3.5 py-3">Rencana Aksi & Target</th>
-                  <th className="px-3.5 py-3">UMKM Dampingan</th>
-                  <th className="px-3.5 py-3">Mentor Pembimbing</th>
-                  <th className="px-3.5 py-3">Program</th>
-                  <th className="px-3.5 py-3">Batas Waktu (Deadline)</th>
-                  <th className="px-3.5 py-3 text-center">Status</th>
-                  <th className="px-3.5 py-3 text-center">Aksi</th>
+                  <th className="px-3.5 py-3 text-center whitespace-nowrap">#</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Rencana Aksi & Target</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">UMKM Dampingan</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Mentor Pembimbing</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Program</th>
+                  <th className="px-3.5 py-3 whitespace-nowrap">Batas Waktu (Deadline)</th>
+                  <th className="px-3.5 py-3 text-center whitespace-nowrap">Status</th>
+                  <th className="px-3.5 py-3 text-center whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1526,11 +1529,21 @@ export const AdminMentoringActivities: React.FC = () => {
             </div>
 
             {/* Official Signer Configuration */}
-            <div className="space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-200">
-              <label className="text-xs font-bold text-slate-800 block">4. Data Pejabat Pengesah Dokumen:</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="space-y-2 rounded-xl bg-slate-50 p-3.5 border border-slate-200">
+              <label className="text-xs font-bold text-slate-800 block">4. Data Pengesahan Dokumen (Tanda Tangan & Lokasi):</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="text-[10px] text-slate-500 block">Nama Pejabat Penandatangan:</label>
+                  <label className="text-[10px] text-slate-500 block font-semibold">Tempat Pengesahan (Kota/Kab):</label>
+                  <input
+                    type="text"
+                    value={pdfSigningCity}
+                    onChange={(e) => setPdfSigningCity(e.target.value)}
+                    placeholder="Contoh: Banjarmasin"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 block font-semibold">Nama Pejabat Penandatangan:</label>
                   <input
                     type="text"
                     value={pdfSignerName}
@@ -1540,7 +1553,7 @@ export const AdminMentoringActivities: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 block">Jabatan Pejabat:</label>
+                  <label className="text-[10px] text-slate-500 block font-semibold">Jabatan / Posisi Pejabat:</label>
                   <input
                     type="text"
                     value={pdfSignerTitle}

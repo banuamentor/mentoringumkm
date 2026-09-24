@@ -3,10 +3,24 @@ import autoTable from 'jspdf-autotable';
 import { UmkmAnalyticsData, Sale, MentoringSession, ActionPlan } from '../types/index.ts';
 import { formatCurrency, formatNumber, formatPercent, formatDate } from './formatters.ts';
 
+export interface UmkmReportOptions {
+  businessName: string;
+  analytics: UmkmAnalyticsData;
+  periodText: string;
+  signingCity?: string;
+  signerName?: string;
+  signerTitle?: string;
+}
+
 export function exportUmkmReportPDF(
   businessName: string,
   analytics: UmkmAnalyticsData,
-  periodText: string
+  periodText: string,
+  signatureOpts?: {
+    signingCity?: string;
+    signerName?: string;
+    signerTitle?: string;
+  }
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -15,6 +29,7 @@ export function exportUmkmReportPDF(
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
   // Header Title
   doc.setFontSize(16);
@@ -134,6 +149,36 @@ export function exportUmkmReportPDF(
     },
   });
 
+  // Section 4: Signature / Pengesahan Dokumen
+  let signY = (doc as any).lastAutoTable.finalY + 12;
+  if (signY > pageHeight - 45) {
+    doc.addPage();
+    signY = 25;
+  }
+
+  const effectiveCity = signatureOpts?.signingCity?.trim() || 'Banjarmasin';
+  const effectiveSignerName = signatureOpts?.signerName || businessName || 'Pemilik Usaha UMKM';
+  const effectiveSignerTitle = signatureOpts?.signerTitle || 'Pemilik Usaha / Pimpinan UMKM';
+  const signDate = new Date().toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(30, 41, 59);
+  doc.text(`Disahkan di: ${effectiveCity}`, pageWidth - 78, signY);
+  doc.text(`Pada Tanggal: ${signDate}`, pageWidth - 78, signY + 4.5);
+  doc.text(effectiveSignerTitle, pageWidth - 78, signY + 9);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text(`( ${effectiveSignerName} )`, pageWidth - 78, signY + 28);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100);
+  doc.text('Tanda Tangan & Cap Usaha', pageWidth - 78, signY + 32);
+
   // Save/Download
   const filename = `Laporan_Bisnis_${businessName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(filename);
@@ -147,6 +192,7 @@ export interface TransactionReportOptions {
   cityRegency?: string;
   periodLabel: string;
   generatedBy?: string;
+  signingCity?: string;
   signerName?: string;
   signerTitle?: string;
   sales: Sale[];
@@ -165,6 +211,7 @@ export function exportTransactionsReportPDF(options: TransactionReportOptions) {
     cityRegency,
     periodLabel,
     generatedBy = 'Administrator Sistem',
+    signingCity,
     signerName = 'Koordinator Pendampingan UMKM',
     signerTitle = 'Dinas Koperasi & UMKM / Banua Mentor',
     sales = [],
@@ -547,7 +594,9 @@ export function exportTransactionsReportPDF(options: TransactionReportOptions) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(navyDark[0], navyDark[1], navyDark[2]);
 
-  doc.text(`Ditetapkan di: Banjarmasin / Bandung`, pageWidth - 80, currentY);
+  const effectiveCity = options.signingCity?.trim() || options.cityRegency || 'Banjarmasin';
+
+  doc.text(`Disahkan di: ${effectiveCity}`, pageWidth - 80, currentY);
   doc.text(`Pada Tanggal: ${signDate}`, pageWidth - 80, currentY + 4.5);
   doc.text(signerTitle, pageWidth - 80, currentY + 9);
 
@@ -760,6 +809,7 @@ export interface MentoringReportOptions {
   programName?: string;
   periodText: string;
   generatedBy?: string;
+  signingCity?: string;
   signerName?: string;
   signerTitle?: string;
   sessions: MentoringSession[];
@@ -999,11 +1049,12 @@ export function exportMentoringReportPDF(options: MentoringReportOptions): strin
 
   const signerName = options.signerName || 'Administrator Program UMKM';
   const signerTitle = options.signerTitle || 'Koordinator Pendampingan & Pembinaan Usaha';
+  const effectiveCity = options.signingCity?.trim() || options.umkmDetails?.cityRegency || 'Banjarmasin';
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(30, 41, 59);
-  doc.text(`Disahkan di: Banjarmasin`, pageWidth - 78, signY);
+  doc.text(`Disahkan di: ${effectiveCity}`, pageWidth - 78, signY);
   doc.text(`Tanggal: ${formatDate(new Date().toISOString())}`, pageWidth - 78, signY + 4.5);
   doc.text(signerTitle, pageWidth - 78, signY + 9);
 

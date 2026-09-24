@@ -64,6 +64,7 @@ export const AdminTransactions: React.FC = () => {
   const [pdfPeriodPreset, setPdfPeriodPreset] = useState<string>('thisMonth');
   const [pdfStartDate, setPdfStartDate] = useState<string>('');
   const [pdfEndDate, setPdfEndDate] = useState<string>('');
+  const [pdfSigningCity, setPdfSigningCity] = useState<string>('Banjarmasin');
   const [pdfSignerName, setPdfSignerName] = useState<string>('Administrator Banua Mentor');
   const [pdfSignerTitle, setPdfSignerTitle] = useState<string>('Koordinator Monitoring & Evaluasi UMKM');
 
@@ -404,6 +405,9 @@ export const AdminTransactions: React.FC = () => {
         cityRegency: umkmTarget?.cityRegency,
         periodLabel,
         generatedBy: user?.fullName || 'Administrator Sistem',
+        signingCity: pdfSigningCity || umkmTarget?.cityRegency || 'Banjarmasin',
+        signerName: pdfSignerName || 'Koordinator Pendampingan UMKM',
+        signerTitle: pdfSignerTitle || 'Dinas Koperasi & UMKM / Banua Mentor',
         sales: filteredSales,
       });
 
@@ -475,6 +479,7 @@ export const AdminTransactions: React.FC = () => {
         cityRegency: targetUmkm?.cityRegency,
         periodLabel,
         generatedBy: user?.fullName || 'Administrator Sistem',
+        signingCity: pdfSigningCity || targetUmkm?.cityRegency || 'Banjarmasin',
         signerName: pdfSignerName || 'Koordinator Pendampingan UMKM',
         signerTitle: pdfSignerTitle || 'Dinas Koperasi & UMKM / Banua Mentor',
         sales: targetSales,
@@ -856,93 +861,93 @@ export const AdminTransactions: React.FC = () => {
               </button>
             </div>
           ) : (
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[850px] text-left text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold text-slate-600">
                 <tr>
-                  <th className="py-3 px-4">No. Invoice & Tanggal</th>
-                  <th className="py-3 px-4">Identitas UMKM</th>
-                  <th className="py-3 px-4">Saluran & Pelanggan</th>
-                  <th className="py-3 px-4">Rincian Produk (Snapshot)</th>
-                  <th className="py-3 px-4 text-right">Omzet (Gross)</th>
-                  <th className="py-3 px-4 text-right">HPP</th>
-                  <th className="py-3 px-4 text-right">Laba Kotor</th>
-                  <th className="py-3 px-4 text-center">Aksi</th>
+                  <th className="py-3 px-4 whitespace-nowrap">No. Invoice & Tanggal</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Identitas UMKM</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Saluran & Pelanggan</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Rincian Produk (Snapshot)</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Omzet (Gross)</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">HPP</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Laba Kotor</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedSales.map((sale) => {
-                  const margin = sale.totalRevenue > 0 ? (sale.grossProfit / sale.totalRevenue) * 100 : 0;
-                  const invNumber = `INV-${String(sale.id).padStart(5, '0')}`;
-                  const itemsSummary =
-                    sale.items && sale.items.length > 0
-                      ? sale.items.map((it) => `${it.productNameSnapshot} (x${it.quantity})`).join(', ')
-                      : '-';
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedSales.map((sale) => {
+                    const margin = sale.totalRevenue > 0 ? (sale.grossProfit / sale.totalRevenue) * 100 : 0;
+                    const invNumber = `INV-${String(sale.id).padStart(5, '0')}`;
+                    const itemsSummary =
+                      sale.items && sale.items.length > 0
+                        ? sale.items.map((it) => `${it.productNameSnapshot} (x${it.quantity})`).join(', ')
+                        : '-';
 
-                  return (
-                    <tr key={sale.id} className="hover:bg-slate-50/70 transition-colors">
-                      {/* Invoice & Date */}
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{invNumber}</div>
-                        <div className="text-[11px] text-slate-500">{formatDate(sale.transactionDate)}</div>
-                      </td>
+                    return (
+                      <tr key={sale.id} className="hover:bg-slate-50/70 transition-colors">
+                        {/* Invoice & Date */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="font-bold text-slate-900">{invNumber}</div>
+                          <div className="text-[11px] text-slate-500">{formatDate(sale.transactionDate)}</div>
+                        </td>
 
-                      {/* UMKM Identity */}
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{sale.businessName || `UMKM #${sale.umkmId}`}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {sale.ownerName || '-'} {sale.cityRegency ? `• ${sale.cityRegency}` : ''}
-                        </div>
-                      </td>
+                        {/* UMKM Identity */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="font-bold text-slate-900">{sale.businessName || `UMKM #${sale.umkmId}`}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {sale.ownerName || '-'} {sale.cityRegency ? `• ${sale.cityRegency}` : ''}
+                          </div>
+                        </td>
 
-                      {/* Channel & Customer */}
-                      <td className="py-3 px-4">
-                        <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                          {sale.channelName || 'Toko Fisik'}
-                        </span>
-                        <div className="mt-0.5 text-[11px] text-slate-600 truncate max-w-[120px]">
-                          {sale.customerName || 'Pelanggan Umum'}
-                        </div>
-                      </td>
-
-                      {/* Product Summary */}
-                      <td className="py-3 px-4 max-w-[220px]">
-                        <p className="text-xs text-slate-700 truncate" title={itemsSummary}>
-                          {itemsSummary}
-                        </p>
-                        {sale.items && (
-                          <span className="text-[10px] text-slate-400">
-                            {sale.items.length} jenis item
+                        {/* Channel & Customer */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                            {sale.channelName || 'Toko Fisik'}
                           </span>
-                        )}
-                      </td>
+                          <div className="mt-0.5 text-[11px] text-slate-600 truncate max-w-[140px]">
+                            {sale.customerName || 'Pelanggan Umum'}
+                          </div>
+                        </td>
 
-                      {/* Omzet */}
-                      <td className="py-3 px-4 text-right font-bold text-slate-900">
-                        {formatCurrency(sale.totalRevenue)}
-                      </td>
+                        {/* Product Summary */}
+                        <td className="py-3 px-4 max-w-[220px]">
+                          <p className="text-xs text-slate-700 truncate" title={itemsSummary}>
+                            {itemsSummary}
+                          </p>
+                          {sale.items && (
+                            <span className="text-[10px] text-slate-400">
+                              {sale.items.length} jenis item
+                            </span>
+                          )}
+                        </td>
 
-                      {/* HPP */}
-                      <td className="py-3 px-4 text-right text-slate-600">
-                        {formatCurrency(sale.totalHpp)}
-                      </td>
+                        {/* Omzet */}
+                        <td className="py-3 px-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                          {formatCurrency(sale.totalRevenue)}
+                        </td>
 
-                      {/* Laba Kotor & Margin */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="font-bold text-emerald-600">
-                          {formatCurrency(sale.grossProfit)}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          Margin: {formatPercent(margin)}
-                        </div>
-                      </td>
+                        {/* HPP */}
+                        <td className="py-3 px-4 text-right text-slate-600 whitespace-nowrap">
+                          {formatCurrency(sale.totalHpp)}
+                        </td>
 
-                      {/* Action buttons */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => handleOpenSaleDetail(sale)}
-                            title="Lihat Detail Lengkap Transaksi"
-                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer"
+                        {/* Laba Kotor & Margin */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="font-bold text-emerald-600">
+                            {formatCurrency(sale.grossProfit)}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Margin: {formatPercent(margin)}
+                          </div>
+                        </td>
+
+                        {/* Action buttons */}
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenSaleDetail(sale)}
+                              title="Lihat Detail Lengkap Transaksi"
+                              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
@@ -1429,11 +1434,23 @@ export const AdminTransactions: React.FC = () => {
             </div>
 
             {/* Document Signature Settings */}
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-xl bg-slate-50 p-3.5 border border-slate-200">
               <label className="block text-xs font-bold text-slate-800">
-                4. Pejabat Pengesah Dokumen (Tanda Tangan)
+                4. Data Pengesahan Dokumen (Tanda Tangan & Lokasi)
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Tempat Pengesahan (Kota/Kab):
+                  </label>
+                  <input
+                    type="text"
+                    value={pdfSigningCity}
+                    onChange={(e) => setPdfSigningCity(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                    placeholder="Contoh: Banjarmasin"
+                  />
+                </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                     Nama Penandatangan:
@@ -1442,7 +1459,7 @@ export const AdminTransactions: React.FC = () => {
                     type="text"
                     value={pdfSignerName}
                     onChange={(e) => setPdfSignerName(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
                     placeholder="Nama Pengesah"
                   />
                 </div>
@@ -1454,7 +1471,7 @@ export const AdminTransactions: React.FC = () => {
                     type="text"
                     value={pdfSignerTitle}
                     onChange={(e) => setPdfSignerTitle(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
                     placeholder="Jabatan"
                   />
                 </div>

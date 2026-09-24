@@ -19,6 +19,7 @@ import {
   Printer,
   Download,
   Receipt,
+  X,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,6 +42,16 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
   const [period, setPeriod] = useState<string>('this_month');
   const [loading, setLoading] = useState<boolean>(true);
   const [exportingReport, setExportingReport] = useState<boolean>(false);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [signingCity, setSigningCity] = useState<string>(umkm?.cityRegency || 'Banjarmasin');
+  const [signerName, setSignerName] = useState<string>(umkm?.ownerName || user?.fullName || 'Pemilik Usaha');
+  const [signerTitle, setSignerTitle] = useState<string>('Pemilik Usaha / Pimpinan UMKM');
+
+  useEffect(() => {
+    if (umkm?.cityRegency) setSigningCity(umkm.cityRegency);
+    if (umkm?.ownerName) setSignerName(umkm.ownerName);
+    else if (user?.fullName) setSignerName(user.fullName);
+  }, [umkm, user]);
 
   const loadData = async (selectedPeriod: string) => {
     setLoading(true);
@@ -108,15 +119,18 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
       exportTransactionsReportPDF({
         scope: 'SINGLE',
         targetName: umkm?.businessName || 'Usaha UMKM',
-        ownerName: umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
+        ownerName: umkm?.ownerName || signerName,
         businessSector: umkm?.businessSector || undefined,
         cityRegency: umkm?.cityRegency || undefined,
         periodLabel: periodLabelMap[period] || period,
-        generatedBy: user?.fullName || umkm?.ownerName || 'Pemilik Usaha UMKM',
-        signerName: umkm?.ownerName || user?.fullName || 'Pemilik Usaha',
-        signerTitle: 'Pemilik Usaha / Pimpinan UMKM',
+        generatedBy: user?.fullName || signerName,
+        signingCity: signingCity || umkm?.cityRegency || 'Banjarmasin',
+        signerName: signerName || 'Pemilik Usaha',
+        signerTitle: signerTitle || 'Pemilik Usaha / Pimpinan UMKM',
         sales: salesList,
       });
+
+      setShowReportModal(false);
     } catch (err: any) {
       console.error('Error generating transaction report from dashboard:', err);
       alert('Gagal membuat laporan: ' + err.message);
@@ -163,13 +177,13 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
           </div>
 
           <button
-            onClick={handleExportPeriodTransactions}
+            onClick={() => setShowReportModal(true)}
             disabled={exportingReport}
             className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
             title="Unduh laporan transaksi PDF untuk periode ini"
           >
             <Download className="h-3.5 w-3.5 text-emerald-700" />
-            <span>{exportingReport ? 'Mengunduh...' : 'Unduh Laporan Periode Ini'}</span>
+            <span>Unduh Laporan Periode Ini</span>
           </button>
         </div>
       </div>
@@ -416,6 +430,102 @@ export const UmkmDashboard: React.FC<UmkmDashboardProps> = ({ onNavigate }) => {
               ) : (
                 <div className="py-4 text-center text-xs text-slate-400">Belum ada data channel</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Generator Laporan Transaksi PDF */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Konfigurasi Laporan Transaksi Periode
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Cetak dokumen laporan resmi untuk periode terpilih ({period})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Data Pengesahan Laporan */}
+            <div className="rounded-xl bg-slate-50 p-4 border border-slate-200 space-y-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Data Pengesahan Laporan (Tanda Tangan Resmi)
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Tempat Pengesahan
+                  </label>
+                  <input
+                    type="text"
+                    value={signingCity}
+                    onChange={(e) => setSigningCity(e.target.value)}
+                    placeholder="Contoh: Banjarmasin"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Nama Penandatangan
+                  </label>
+                  <input
+                    type="text"
+                    value={signerName}
+                    onChange={(e) => setSignerName(e.target.value)}
+                    placeholder="Nama Pemilik / Manajer"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Posisi / Jabatan
+                  </label>
+                  <input
+                    type="text"
+                    value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="Pemilik Usaha / Pimpinan"
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={exportingReport}
+                onClick={() => setShowReportModal(false)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={exportingReport}
+                onClick={handleExportPeriodTransactions}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+              >
+                <Printer className="h-4 w-4" />
+                <span>{exportingReport ? 'Menerbitkan PDF...' : 'Cetak & Unduh Laporan PDF'}</span>
+              </button>
             </div>
           </div>
         </div>
