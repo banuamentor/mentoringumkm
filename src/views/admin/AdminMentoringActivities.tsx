@@ -702,9 +702,9 @@ export const AdminMentoringActivities: React.FC = () => {
           </div>
 
           {/* Date Picker (Start - End) */}
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0">
             <label className="text-[11px] font-semibold text-slate-600">Rentang Tanggal</label>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               <input
                 type="date"
                 value={startDate}
@@ -712,9 +712,9 @@ export const AdminMentoringActivities: React.FC = () => {
                   setStartDate(e.target.value);
                   setPeriodPreset('custom');
                 }}
-                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
+                className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
               />
-              <span className="text-slate-400 text-xs">-</span>
+              <span className="text-slate-400 text-xs shrink-0">-</span>
               <input
                 type="date"
                 value={endDate}
@@ -722,7 +722,7 @@ export const AdminMentoringActivities: React.FC = () => {
                   setEndDate(e.target.value);
                   setPeriodPreset('custom');
                 }}
-                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
+                className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>

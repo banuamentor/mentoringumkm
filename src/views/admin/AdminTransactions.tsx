@@ -699,9 +699,10 @@ export const AdminTransactions: React.FC = () => {
         </div>
 
         {/* Periode Preset Buttons & Custom Date Range */}
-        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 mr-1">Periode:</span>
+        <div className="pt-3 border-t border-slate-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+          {/* Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-semibold text-slate-500 mr-1 shrink-0">Periode:</span>
             {[
               { id: 'today', label: 'Hari Ini' },
               { id: '7days', label: '7 Hari' },
@@ -715,7 +716,7 @@ export const AdminTransactions: React.FC = () => {
               <button
                 key={p.id}
                 onClick={() => handlePresetChange(p.id)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer shrink-0 ${
                   periodPreset === p.id
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -726,10 +727,10 @@ export const AdminTransactions: React.FC = () => {
             ))}
           </div>
 
-          {/* Date Picker Range */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-              <span className="text-[11px] text-slate-400">Dari</span>
+          {/* Date Picker Range - Fully responsive, cleanly contained */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2 w-full xl:w-auto min-w-0">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50/80 p-1.5 sm:p-0 sm:bg-transparent rounded-lg min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500 shrink-0 w-12 sm:w-auto">Dari:</span>
               <input
                 type="date"
                 value={startDate}
@@ -737,12 +738,11 @@ export const AdminTransactions: React.FC = () => {
                   setStartDate(e.target.value);
                   setPeriodPreset('custom');
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                className="w-full sm:w-36 min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
               />
             </div>
-            <span className="text-slate-300">-</span>
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-              <span className="text-[11px] text-slate-400">Sampai</span>
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50/80 p-1.5 sm:p-0 sm:bg-transparent rounded-lg min-w-0">
+              <span className="text-[11px] font-semibold text-slate-500 shrink-0 w-12 sm:w-auto">Sampai:</span>
               <input
                 type="date"
                 value={endDate}
@@ -750,7 +750,7 @@ export const AdminTransactions: React.FC = () => {
                   setEndDate(e.target.value);
                   setPeriodPreset('custom');
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                className="w-full sm:w-36 min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
               />
             </div>
           </div>

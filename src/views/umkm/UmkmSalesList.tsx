@@ -572,7 +572,7 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
             </select>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-[11px] font-semibold text-slate-500">Dari Tanggal</label>
             <input
               type="date"
@@ -581,11 +581,11 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                 setStartDate(e.target.value);
                 setPeriodPreset('custom');
               }}
-              className="mt-1 w-full rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-slate-900 focus:outline-none"
+              className="mt-1 w-full min-w-0 rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-slate-900 focus:outline-none"
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-[11px] font-semibold text-slate-500">Sampai Tanggal</label>
             <input
               type="date"
@@ -594,7 +594,7 @@ export const UmkmSalesList: React.FC<UmkmSalesListProps> = ({ onAddNew }) => {
                 setEndDate(e.target.value);
                 setPeriodPreset('custom');
               }}
-              className="mt-1 w-full rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-slate-900 focus:outline-none"
+              className="mt-1 w-full min-w-0 rounded-lg border border-slate-300 py-1.5 px-2.5 text-xs focus:border-slate-900 focus:outline-none"
             />
           </div>
         </div>
