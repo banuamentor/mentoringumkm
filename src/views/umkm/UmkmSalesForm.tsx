@@ -265,8 +265,10 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
   // Other Fee
   const othFee = Math.max(0, Number(otherFee) || 0);
 
-  // Grand Total for Customer to Pay
-  const totalRevenue = netSales + shipFee + taxAmount + othFee;
+  // Omzet Penjualan Bersih (Net Sales) - Murni dari penjualan produk dikurangi diskon
+  // Ongkir, pajak, dan biaya kemasan/lainnya TIDAK dimasukkan ke dalam perhitungan omzet
+  const totalRevenue = netSales;
+  const customerBillTotal = netSales + shipFee + taxAmount + othFee;
 
   // Real Business Gross Profit (Revenue from goods minus HPP)
   const totalGrossProfit = netSales - totalHpp;
@@ -1177,28 +1179,37 @@ export const UmkmSalesForm: React.FC<UmkmSalesFormProps> = ({ onSuccess, onCance
                 <span className="font-semibold">-{formatCurrency(discountAmount)}</span>
               </div>
             )}
-            {shipFee > 0 && (
-              <div className="flex justify-between text-slate-600">
-                <span>Ongkos Kirim (+):</span>
-                <span className="font-semibold">+{formatCurrency(shipFee)}</span>
-              </div>
-            )}
-            {taxAmount > 0 && (
-              <div className="flex justify-between text-slate-600">
-                <span>Pajak (+):</span>
-                <span className="font-semibold">+{formatCurrency(taxAmount)}</span>
-              </div>
-            )}
-            {othFee > 0 && (
-              <div className="flex justify-between text-slate-600">
-                <span>Biaya Lain-lain (+):</span>
-                <span className="font-semibold">+{formatCurrency(othFee)}</span>
-              </div>
-            )}
             <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-slate-900 text-sm">
-              <span>Total Akhir Tagihan:</span>
+              <span>Total Omzet Penjualan (Net Sales):</span>
               <span className="text-emerald-700">{formatCurrency(totalRevenue)}</span>
             </div>
+            {(shipFee > 0 || taxAmount > 0 || othFee > 0) && (
+              <div className="pt-2 border-t border-dashed border-slate-200 text-slate-500 text-[11px] space-y-1">
+                <div className="font-semibold text-slate-600">Biaya Tambahan (Tidak masuk ke omzet bisnis):</div>
+                {shipFee > 0 && (
+                  <div className="flex justify-between pl-2">
+                    <span>• Ongkos Kirim (Logistik Kurir):</span>
+                    <span>+{formatCurrency(shipFee)}</span>
+                  </div>
+                )}
+                {taxAmount > 0 && (
+                  <div className="flex justify-between pl-2">
+                    <span>• Pajak (Titipan Kas Negara):</span>
+                    <span>+{formatCurrency(taxAmount)}</span>
+                  </div>
+                )}
+                {othFee > 0 && (
+                  <div className="flex justify-between pl-2">
+                    <span>• Kemasan / Biaya Lain:</span>
+                    <span>+{formatCurrency(othFee)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-slate-800 pt-1 border-t border-slate-200">
+                  <span>Total Tagihan ke Pembeli:</span>
+                  <span>{formatCurrency(customerBillTotal)}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

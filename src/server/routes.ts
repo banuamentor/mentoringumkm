@@ -1187,8 +1187,9 @@ apiRouter.post('/sales', requireAuth, requireRole(['UMKM']), async (req: AuthReq
     // 4. Other Fee
     const calculatedOtherFee = Math.max(0, Number(otherFee) || 0);
 
-    // 5. Final totals
-    const finalTotalRevenue = netSales + calculatedShippingFee + calculatedTaxAmount + calculatedOtherFee;
+    // 5. Final totals: Omzet Penjualan murni dari penjualan produk bersih (Net Sales)
+    // Sesuai standar akuntansi UMKM: Ongkir, pajak, dan kemasan/lainnya TIDAK dimasukkan ke dalam perhitungan omzet bisnis
+    const finalTotalRevenue = netSales;
     const finalGrossProfit = netSales - calculatedTotalHpp;
 
     // Insert sale with automatic sequence retry
