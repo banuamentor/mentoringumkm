@@ -7,7 +7,6 @@ import {
   CalendarCheck,
   FileSpreadsheet,
   Sparkles,
-  Phone,
   Mail,
   MessageCircle,
 } from 'lucide-react';
@@ -55,18 +54,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span className="font-extrabold text-lg text-slate-950 tracking-tight">Banua Mentor</span>
           </div>
 
-          {/* Header Actions & Contact */}
-          <div className="flex items-center gap-2.5 sm:gap-4">
-            <a
-              href={`https://wa.me/${whatsappClean}?text=Halo%20Admin%20Banua%20Mentor%2C%20saya%20ingin%20bertanya%20tentang%20program%20inkubasi%20UMKM`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
-            >
-              <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
-              <span>WA: {whatsappNumber}</span>
-            </a>
-
+          {/* Header Actions */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <button
               type="button"
               onClick={() => openAuth('login')}
@@ -183,7 +172,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Footer with Contact Details */}
       <footer className="mt-auto border-t border-emerald-950/10 bg-[#FAF9F5] py-8 text-xs text-slate-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             {/* Brand Section */}
             <div className="flex items-center gap-3 text-center sm:text-left">
               <div className="h-9 w-9 rounded-xl bg-emerald-700 flex items-center justify-center text-white shadow-xs shrink-0">
@@ -195,8 +184,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            {/* Official Contact Info */}
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
+            {/* Official Contact Info (WA & Email) & Auth Quick Links */}
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs">
               <a
                 href={`https://wa.me/${whatsappClean}?text=Halo%20Admin%20Banua%20Mentor%2C%20saya%20ingin%20bertanya%20tentang%20program%20inkubasi%20UMKM`}
                 target="_blank"
@@ -216,25 +205,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <Mail className="h-4 w-4 text-amber-600 shrink-0" />
                 <span>Email: <span className="font-bold">{emailAddress}</span></span>
               </a>
-            </div>
 
-            {/* Auth Quick Links */}
-            <div className="flex items-center gap-4 text-slate-500 font-semibold text-xs">
-              <button
-                type="button"
-                onClick={() => openAuth('forgot')}
-                className="text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
-              >
-                Lupa Password?
-              </button>
-              <span className="text-slate-300">•</span>
-              <button
-                type="button"
-                onClick={() => openAuth('login')}
-                className="text-slate-700 hover:text-slate-950 hover:underline cursor-pointer"
-              >
-                Masuk Akun
-              </button>
+              <div className="flex items-center gap-3 text-slate-500 font-semibold pl-1 sm:pl-2">
+                <button
+                  type="button"
+                  onClick={() => openAuth('forgot')}
+                  className="text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                >
+                  Lupa Password?
+                </button>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => openAuth('login')}
+                  className="text-slate-700 hover:text-slate-950 hover:underline cursor-pointer"
+                >
+                  Masuk Akun
+                </button>
+              </div>
             </div>
           </div>
         </div>
