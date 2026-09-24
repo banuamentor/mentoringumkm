@@ -34,9 +34,9 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
   const [evaluatingPlan, setEvaluatingPlan] = useState<any | null>(null);
   const [evalForm, setEvalForm] = useState({
     status: 'COMPLETED',
-    actualResult: '',
-    achievementRate: 100,
-    notes: '',
+    evaluationNotes: '',
+    result: '',
+    nextRecommendation: '',
   });
   const [savingEval, setSavingEval] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -71,11 +71,12 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
 
   const handleOpenEvalModal = (plan: any) => {
     setEvaluatingPlan(plan);
+    const lastEval = plan.evaluations && plan.evaluations.length > 0 ? plan.evaluations[0] : null;
     setEvalForm({
-      status: plan.status === 'COMPLETED' ? 'COMPLETED' : 'COMPLETED',
-      actualResult: '',
-      achievementRate: 100,
-      notes: '',
+      status: plan.status === 'COMPLETED' ? 'COMPLETED' : (plan.status || 'IN_PROGRESS'),
+      evaluationNotes: lastEval?.evaluationNotes || '',
+      result: lastEval?.result || '',
+      nextRecommendation: lastEval?.nextRecommendation || '',
     });
     setErrorMsg(null);
   };
@@ -87,7 +88,7 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
     setErrorMsg(null);
 
     try {
-      const res = await fetchWithAuth(`/api/action-plans/${evaluatingPlan.id}/evaluate`, {
+      const res = await fetchWithAuth(`/api/action-plans/${evaluatingPlan.id}/evaluations`, {
         method: 'POST',
         body: JSON.stringify(evalForm),
       });
@@ -98,7 +99,7 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
       }
 
       setEvaluatingPlan(null);
-      loadData();
+      await loadData();
     } catch (err: any) {
       setErrorMsg(err.message || 'Terjadi kesalahan sistem');
     } finally {
@@ -264,6 +265,33 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
                       </span>
                     </div>
                   </div>
+
+                  {/* Historical Evaluation Box */}
+                  {p.evaluations && p.evaluations.length > 0 && (
+                    <div className="rounded-lg bg-indigo-50/60 p-3 text-xs border border-indigo-100/80 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase text-indigo-800">
+                        <span>Evaluasi Mentor ({formatDate(p.evaluations[0].evaluationDate)})</span>
+                        <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-900">
+                          {p.evaluations[0].status || p.status}
+                        </span>
+                      </div>
+                      <div className="font-semibold text-slate-900">
+                        {p.evaluations[0].evaluationNotes}
+                      </div>
+                      {p.evaluations[0].result && (
+                        <div className="text-slate-700">
+                          <span className="font-medium text-slate-500">Hasil Capaian: </span>
+                          {p.evaluations[0].result}
+                        </div>
+                      )}
+                      {p.evaluations[0].nextRecommendation && (
+                        <div className="text-indigo-800 font-medium">
+                          <span className="font-medium text-indigo-600">Rekomendasi Lanjutan: </span>
+                          {p.evaluations[0].nextRecommendation}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-slate-100 pt-3 flex items-center justify-between gap-2">
@@ -277,10 +305,10 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
 
                   <button
                     onClick={() => handleOpenEvalModal(p)}
-                    className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors shadow-xs"
+                    className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors shadow-xs cursor-pointer"
                   >
                     <FileCheck className="h-3.5 w-3.5" />
-                    <span>Evaluasi Capaian</span>
+                    <span>Evaluasi Target</span>
                   </button>
                 </div>
               </div>
@@ -292,11 +320,11 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
       {/* Evaluate Modal */}
       {evaluatingPlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Evaluasi Rencana Aksi</h3>
-                <p className="text-xs text-slate-500">{evaluatingPlan.businessName}</p>
+                <h3 className="text-base font-bold text-slate-900">Evaluasi Capaian Action Plan</h3>
+                <p className="text-xs text-slate-500">{evaluatingPlan.businessName} • {evaluatingPlan.title}</p>
               </div>
               <button
                 onClick={() => setEvaluatingPlan(null)}
@@ -306,9 +334,14 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
               </button>
             </div>
 
-            <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-              <span className="font-bold text-slate-900 block">{evaluatingPlan.title}</span>
-              <span className="text-slate-500 block mt-0.5">Target: {evaluatingPlan.target}</span>
+            <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-900">{evaluatingPlan.title}</span>
+                <span className="text-slate-500 font-medium">PIC: {evaluatingPlan.pic}</span>
+              </div>
+              {evaluatingPlan.target && (
+                <div className="text-indigo-700 font-medium">Target: {evaluatingPlan.target}</div>
+              )}
             </div>
 
             {errorMsg && (
@@ -318,50 +351,50 @@ export const MentorActionPlans: React.FC<MentorActionPlansProps> = ({ onSelectUm
               </div>
             )}
 
-            <form onSubmit={handleSaveEvaluation} className="mt-4 space-y-3 text-xs">
+            <form onSubmit={handleSaveEvaluation} className="mt-4 space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Status Ketercapaian *</label>
+                <label className="block font-semibold text-slate-700 mb-1">Status Pencapaian Target *</label>
                 <select
                   value={evalForm.status}
                   onChange={(e) => setEvalForm({ ...evalForm, status: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:border-indigo-600 bg-white"
                 >
-                  <option value="COMPLETED">COMPLETED (Target Tercapai)</option>
-                  <option value="IN_PROGRESS">IN_PROGRESS (Masih Dikerjakan)</option>
-                  <option value="CANCELLED">CANCELLED (Dibatalkan)</option>
+                  <option value="COMPLETED">Tercapai / Selesai (COMPLETED)</option>
+                  <option value="IN_PROGRESS">Masih Berjalan (IN_PROGRESS)</option>
+                  <option value="CANCELLED">Dibatalkan / Tidak Relevan (CANCELLED)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Hasil Nyata di Lapangan</label>
+                <label className="block font-semibold text-slate-700 mb-1">Catatan Evaluasi Mentor *</label>
                 <textarea
-                  rows={2}
-                  placeholder="Contoh: Telah berhasil menghitung ulang HPP 10 item menu dan margin naik ke 35%"
-                  value={evalForm.actualResult}
-                  onChange={(e) => setEvalForm({ ...evalForm, actualResult: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:border-indigo-600"
+                  rows={3}
+                  required
+                  placeholder="Ulasan mentor terhadap proses eksekusi dan kendala di lapangan..."
+                  value={evalForm.evaluationNotes}
+                  onChange={(e) => setEvalForm({ ...evalForm, evaluationNotes: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:outline-none focus:border-indigo-600"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Persentase Keberhasilan (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={evalForm.achievementRate}
-                  onChange={(e) => setEvalForm({ ...evalForm, achievementRate: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:border-indigo-600"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan Mentor</label>
+                <label className="block font-semibold text-slate-700 mb-1">Hasil Capaian Nyata</label>
                 <input
                   type="text"
-                  placeholder="Arahan tindak lanjut untuk periode selanjutnya"
-                  value={evalForm.notes}
-                  onChange={(e) => setEvalForm({ ...evalForm, notes: e.target.value })}
+                  placeholder="Contoh: Tercapai 100%, margin berhasil dikunci 50%"
+                  value={evalForm.result}
+                  onChange={(e) => setEvalForm({ ...evalForm, result: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Rekomendasi Tahap Berikutnya</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Terapkan standard recipe untuk produk varian baru..."
+                  value={evalForm.nextRecommendation}
+                  onChange={(e) => setEvalForm({ ...evalForm, nextRecommendation: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:border-indigo-600"
                 />
               </div>

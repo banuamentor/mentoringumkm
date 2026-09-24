@@ -2773,17 +2773,48 @@ apiRouter.put('/action-plans/:id', requireAuth, async (req: AuthRequest, res) =>
   }
 });
 
-// Action Plan Evaluation
-apiRouter.post('/action-plans/:id/evaluations', requireAuth, requireRole(['MENTOR']), async (req: AuthRequest, res) => {
+// Action Plan Evaluation (Supports both /evaluations and /evaluate routes)
+apiRouter.post(['/action-plans/:id/evaluations', '/action-plans/:id/evaluate'], requireAuth, requireRole(['MENTOR', 'ADMIN']), async (req: AuthRequest, res) => {
   try {
-    if (!req.mentor) return res.status(400).json({ error: 'Profil mentor belum aktif' });
-
     const actionPlanId = Number(req.params.id);
-    const { status, evaluationNotes, result, nextRecommendation } = req.body;
+    if (!actionPlanId) return res.status(400).json({ error: 'ID action plan tidak valid' });
 
-    if (!status || !evaluationNotes) {
-      return res.status(400).json({ error: 'Status evaluasi dan catatan evaluasi wajib diisi' });
+    const planRes = await db.select().from(actionPlans).where(eq(actionPlans.id, actionPlanId)).limit(1);
+    if (planRes.length === 0) {
+      return res.status(404).json({ error: 'Action plan tidak ditemukan' });
     }
+
+    let mentorId = req.mentor ? req.mentor.id : planRes[0].mentorId;
+
+    const {
+      status,
+      evaluationNotes,
+      notes,
+      result,
+      actualResult,
+      nextRecommendation,
+      achievementRate,
+    } = req.body;
+
+    const finalStatus = String(status || 'COMPLETED');
+    const finalNotes = String(
+      evaluationNotes ||
+      notes ||
+      actualResult ||
+      `Evaluasi status: ${finalStatus}${achievementRate !== undefined ? ` (Tercapai ${achievementRate}%)` : ''}`
+    ).trim();
+
+    const finalResult = result
+      ? String(result).trim()
+      : actualResult
+      ? String(actualResult).trim()
+      : null;
+
+    const finalNextRecommendation = nextRecommendation
+      ? String(nextRecommendation).trim()
+      : notes && notes !== finalNotes
+      ? String(notes).trim()
+      : null;
 
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -2791,17 +2822,27 @@ apiRouter.post('/action-plans/:id/evaluations', requireAuth, requireRole(['MENTO
       .insert(actionPlanEvaluations)
       .values({
         actionPlanId,
-        mentorId: req.mentor.id,
+        mentorId,
         evaluationDate: todayStr,
-        status: String(status),
-        evaluationNotes: String(evaluationNotes).trim(),
-        result: result ? String(result).trim() : null,
-        nextRecommendation: nextRecommendation ? String(nextRecommendation).trim() : null,
+        status: finalStatus,
+        evaluationNotes: finalNotes || 'Selesai dievaluasi',
+        result: finalResult,
+        nextRecommendation: finalNextRecommendation,
       })
       .returning();
 
-    // Also update action plan status if changed
-    await db.update(actionPlans).set({ status, updatedAt: new Date() }).where(eq(actionPlans.id, actionPlanId));
+    // Also update action plan status and completedAt
+    const updatePayload: any = {
+      status: finalStatus,
+      updatedAt: new Date(),
+    };
+    if (finalStatus === 'COMPLETED') {
+      updatePayload.completedAt = new Date();
+    } else {
+      updatePayload.completedAt = null;
+    }
+
+    await db.update(actionPlans).set(updatePayload).where(eq(actionPlans.id, actionPlanId));
 
     await logAudit(req.profile!.id, 'EVALUATE_ACTION_PLAN', 'action_plan_evaluations', inserted[0].id);
     res.status(201).json({ message: 'Evaluasi action plan berhasil disimpan', evaluation: inserted[0] });

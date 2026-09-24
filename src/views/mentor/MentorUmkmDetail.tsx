@@ -416,14 +416,16 @@ export const MentorUmkmDetail: React.FC<MentorUmkmDetailProps> = ({ assignment, 
                   <button
                     onClick={() => {
                       setEvaluatingPlan(plan);
+                      const lastEval = plan.evaluations && plan.evaluations.length > 0 ? plan.evaluations[0] : null;
                       setEvalForm({
-                        status: plan.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS',
-                        evaluationNotes: plan.evaluations?.[0]?.evaluationNotes || '',
-                        result: plan.evaluations?.[0]?.result || '',
-                        nextRecommendation: plan.evaluations?.[0]?.nextRecommendation || '',
+                        status: plan.status === 'COMPLETED' ? 'COMPLETED' : (plan.status || 'IN_PROGRESS'),
+                        evaluationNotes: lastEval?.evaluationNotes || '',
+                        result: lastEval?.result || '',
+                        nextRecommendation: lastEval?.nextRecommendation || '',
                       });
+                      setErrorMsg(null);
                     }}
-                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs"
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
                   >
                     <FileCheck className="h-3.5 w-3.5 text-indigo-600" />
                     <span>Evaluasi Target</span>
@@ -717,7 +719,7 @@ export const MentorUmkmDetail: React.FC<MentorUmkmDetailProps> = ({ assignment, 
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Evaluasi Capaian Action Plan</h3>
-                <p className="text-xs text-slate-500">{evaluatingPlan.title}</p>
+                <p className="text-xs text-slate-500">{assignment.businessName} • {evaluatingPlan.title}</p>
               </div>
               <button
                 onClick={() => setEvaluatingPlan(null)}
@@ -726,6 +728,22 @@ export const MentorUmkmDetail: React.FC<MentorUmkmDetailProps> = ({ assignment, 
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-900">{evaluatingPlan.title}</span>
+                <span className="text-slate-500 font-medium">PIC: {evaluatingPlan.pic}</span>
+              </div>
+              {evaluatingPlan.target && (
+                <div className="text-indigo-700 font-medium">Target: {evaluatingPlan.target}</div>
+              )}
+            </div>
+
+            {errorMsg && (
+              <div className="rounded-lg bg-rose-50 p-3 text-xs text-rose-800 border border-rose-200">
+                {errorMsg}
+              </div>
+            )}
 
             <form onSubmit={handleSaveEvaluation} className="space-y-4 text-xs">
               <div>
